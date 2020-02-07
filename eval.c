@@ -3,6 +3,8 @@
 
 lobj_t * lobj_eval(lobj_t * v, env_t * env) {
   lobj_t * out = v;
+  // Quoted items are self evaluating
+  if (out->quote) return out; 
   switch (out->type) {
   case LOBJ_NUM:
   case LOBJ_ERR:
@@ -27,12 +29,19 @@ lobj_t * lobj_eval(lobj_t * v, env_t * env) {
   return out;
 }
 
+// Force evaluation of a quoted expression
+lobj_t * lobj_qeval(lobj_t * v, env_t * env) {
+  lobj_t * expr = unquote(v);
+
+  return lobj_eval(expr, env);
+};
+
 lobj_t * apply(lambda_t * fun, lobj_t * args) {
   lobj_t * argstuple[fun->arity];
   int i = 0;
 
   while (!isnil(args)) {
-    LASSERT(i < fun->arity, "Expected %i args, got %i", fun->arity, i)
+    LASSERT(i < fun->arity, "Too many args, exceeded %i", fun->arity)
     argstuple[i] = car(args);
     args = cdr(args);
     i++;
