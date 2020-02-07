@@ -36,6 +36,7 @@ enum { GC_WHITE, GC_GREY, GC_BLACK };
 #define LOBJ_HEAD \
   int type;       \
   int tag;        \
+  int quote;      \
   lobj_t * next;
 
 typedef struct _lobj_t {
@@ -125,6 +126,9 @@ lambda_t * toproc(lobj_t *);
 cons_t * tosexpr(lobj_t *);
 
 // Helpers & primitives
+lobj_t * lobj_copy(lobj_t *);
+lobj_t * lobj_quote_copy(lobj_t *);
+lobj_t * unquote(lobj_t *);
 lobj_t * lookup(char *, env_t *, lobj_t *);
 void intern(sym_t *, env_t *, lobj_t *);
 lobj_t * prim_add(lobj_t * args[2]);
@@ -138,6 +142,7 @@ lobj_t * prim_def(lobj_t * args[3]);
 lobj_t * prim_eval(lobj_t * args[2]);
 lobj_t * prim_apply(lobj_t * args[2]);
 lobj_t * prim_globals(lobj_t ** args);
+lobj_t * prim_allocations(lobj_t ** args);
 
 /* Macros  */
 #define LASSERT(cond, fmt, ...)                     \
