@@ -42,6 +42,7 @@ void initialize_lisp() {
   intern_obj(new_sym("eval"), GLOBALS, new_proc(prim_eval, GLOBALS, 2));
   intern_obj(new_sym("apply"), GLOBALS, new_proc(prim_apply, GLOBALS, 2));
   intern_obj(new_sym("globals"), GLOBALS, new_proc(prim_globals, GLOBALS, 0));
+  intern_obj(new_sym("allocations"), GLOBALS, new_proc(prim_allocations, GLOBALS, 0));
   return;
 }
 
@@ -51,6 +52,7 @@ int main(int argc, char** argv) {
   
   mpc_parser_t * Number  = mpc_new("number");
   mpc_parser_t * Symbol  = mpc_new("symbol");
+  mpc_parser_t * Quote   = mpc_new("quote");
   mpc_parser_t * List    = mpc_new("list");
   mpc_parser_t * Sexpr   = mpc_new("sexpr");
   mpc_parser_t * Cons    = mpc_new("cons");
@@ -61,36 +63,30 @@ int main(int argc, char** argv) {
     "                                                                                      \
       number  : /-?[0-9]+/ ;                                                               \
       symbol  : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/ ;                                         \
+      quote   : ':' <expr>{1} ;                                                            \
       list    : '[' <expr>* ']' ;                                                          \
       sexpr   : '(' <expr>* ')' ;                                                          \
       cons    : <list> | <sexpr> ;                                                         \
-      expr    : <number> | <symbol> | <cons> ;                                             \
+      expr    : <number> | <symbol> | <cons> | <quote> ;                                   \
       rascal  : /^/ <expr>* /$/ ;                                                          \
     ",
-	    Number, Symbol, List, Sexpr, Cons, Expr, Rascal);
+      Number, Symbol, Quote, List, Sexpr, Cons, Expr, Rascal);
   
-  puts("Rascal Version 0.0.0.0.5");
+  puts("Rascal Version 0.0.0.0.6");
   puts("Press Ctrl+c to Exit\n");
   
   while (1) {
-  
+    if (setjmp(TOPLEVEL)) lobj_println(CURRENT_ERROR);
+
     char* input = readline("rascal> ");
-    
     mpc_result_t r;
+
     if (mpc_parse("<stdin>", input, Rascal, &r)) {
       //show_tree(r.output, 0);
       ROOT = lobj_eval(lobj_read(r.output, GLOBALS), GLOBALS);
+      lobj_println(ROOT);
 
-      int status = setjmp(TOPLEVEL);
-
-      if (status) {
-	lobj_println(CURRENT_ERROR);
-	status = 0;
-	continue;
-      } else {
-	lobj_println(ROOT);
-      }
-      
+	
       if (ALLOCATIONS > ALLOCATIONS_LIMIT) {
 	gc();
 	printf("Allocations after gc: %d\n", ALLOCATIONS);
@@ -106,7 +102,7 @@ int main(int argc, char** argv) {
     
   }
   
-  mpc_cleanup(7, Number, Symbol, List, Sexpr, Cons, Expr, Rascal);  
+  mpc_cleanup(8, Number, Symbol, Quote,  List, Sexpr, Cons, Expr, Rascal);  
   
   return 0;
 }
