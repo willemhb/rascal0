@@ -5,6 +5,7 @@ cons_t * mk_cons(lobj_t * car_, lobj_t * cdr_) {
   cons_t * v = malloc(sizeof(cons_t));
   v->type = LOBJ_CONS;
   v->tag = GC_WHITE;
+  v->quote = 0;
   v->_car = car_;
   v->_cdr = cdr_;
 
@@ -22,6 +23,7 @@ sym_t * mk_sym(char * name) {
   sym_t * s = malloc(sizeof(sym_t));
   s->type = LOBJ_SYM;
   s->tag = GC_WHITE;
+  s->quote = 0;
   str_init(s->name, name);
 
   return s;
@@ -43,6 +45,7 @@ env_t * mk_env(char * name, lobj_t * binding) {
   env_t * s = malloc(sizeof(env_t));
   s->tag = GC_WHITE;
   s->type = LOBJ_ENV;
+  s->quote = 0;
   str_init(s->name, name);
   s->binding = binding;
   s->left = s->right = NULL;
@@ -61,6 +64,7 @@ num_t * mk_num(long value) {
   num_t * n = malloc(sizeof(num_t));
   n->tag = GC_WHITE;
   n->type = LOBJ_NUM;
+  n->quote = 0;
   n->value = value;
 
   return n;
@@ -77,6 +81,7 @@ err_t * mk_err(char * fmt, ...) {
   err_t * v = malloc(sizeof(err_t));
   v->tag = GC_WHITE;
   v->type = LOBJ_ERR;
+  v->quote = 0;
 
   va_list va;
   va_start(va, fmt);
@@ -94,6 +99,7 @@ lobj_t * new_err(char * fmt, ...) {
   err_t * v = malloc(sizeof(err_t));
   v->tag = GC_WHITE;
   v->type = LOBJ_ERR;
+  v->quote = 0;
 
   va_list va;
   va_start(va, fmt);
@@ -118,6 +124,7 @@ lambda_t * mk_proc(proc_t body, env_t * env, int arity) {
   fun->body = body;
   fun->env = env;
   fun->arity = arity;
+  fun->quote = 0;
 
   return fun;
 }
@@ -146,6 +153,56 @@ SAFECAST_OP(env_t*, env, "env")
 SAFECAST_OP(lambda_t*, proc, "proc")
 SAFECAST_OP(cons_t*, sexpr, "sexpr")
 
+// Deep copy operation
+// Carefully consider whether copying an object means copying an environment!
+  lobj_t * lobj_copy(lobj_t * obj) {
+  LASSERT(obj != NULL, "Attempt to access illegal memory.")
+  lobj_t * out;
+
+  if (obj->quote) return lobj_quote_copy(obj);
+    
+    switch (obj->type) {
+    case LOBJ_NUM: return new_num(tonum(obj)->value);
+    case LOBJ_ERR: return new_err(toerr(obj)->msg);
+    case LOBJ_SYM: return new_sym(tosym(obj)->name);
+    case LOBJ_ENV:{
+      env_t * env = toenv(obj);
+      env_t * out_env = mk_env(env->name, lobj_copy(env->binding));
+      out_env->left = toenv(lobj_copy(LOBJ_CAST(env->left)));
+      out_env->right = toenv(lobj_copy(LOBJ_CAST(env->right)));
+      out = LOBJ_CAST(out_env);
+      break;
+    }case LOBJ_PROC:{
+       lambda_t * proc = toproc(obj);
+       lambda_t * out_proc = mk_proc(proc->body, toenv(lobj_copy(LOBJ_CAST(proc->env))), proc->arity);
+       out = LOBJ_CAST(out_proc);
+       break;
+     }case LOBJ_CONS: return new_cons(lobj_copy(car(obj)), lobj_copy(cdr(obj)));
+    case LOBJ_SEXPR: return new_cons(lobj_copy(cars(obj)), lobj_copy(cdrs(obj)));
+     }
+
+    LINK(out);
+    return out;
+    }
+
+/* NB this implementation of quoting will break in a multithreaded environment  */
+lobj_t * lobj_quote_copy(lobj_t * obj) {
+  obj->quote = 0;
+  lobj_t * out = lobj_copy(obj);
+  obj->quote =1;
+  out->quote = 1;
+
+  return out;
+}
+
+// Return an unquoted copy of obj
+lobj_t * unquote(lobj_t * obj) {
+  obj->quote = 0;
+  lobj_t * out = lobj_copy(obj);
+  obj->quote = 1;
+
+  return out;
+}
 
 // Helpers for working with symbols.
 void intern(sym_t * new, env_t * env, lobj_t * binding) {
@@ -240,7 +297,7 @@ lobj_t * prim_tail(lobj_t * args[1]) {
 }
 
 lobj_t * prim_def(lobj_t * args[3]) {
-  sym_t * name = tosym(args[0]);
+  sym_t * name = tosym(unquote(args[0]));
   lobj_t * value = args[1];
   env_t * env = toenv(args[2]);
 
@@ -258,4 +315,10 @@ lobj_t * prim_apply(lobj_t * args[2]) {
 
 lobj_t * prim_globals(lobj_t ** args) {
   return LOBJ_CAST(GLOBALS);
+}
+
+// For debugging from the REPL
+lobj_t * prim_allocations(lobj_t ** args) {
+  printf("%i Allocations\n", ALLOCATIONS);
+  return NIL;
 }
