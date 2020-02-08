@@ -48,7 +48,7 @@ num_t * mk_num(long value) {
 }
 
 lobj_t * new_num(long value) {
-  lobj_t * out = LOBJ_CAST(mk_num(value));
+    lobj_t * out = LOBJ_CAST(mk_num(value));
   LINK(out);
 
   return out;
@@ -94,6 +94,23 @@ lobj_t * new_err(char * fmt, ...) {
 }
 
 
+prim_t * mk_prim(proc_t body, int arity) {
+  prim_t * fun = malloc(sizeof(prim_t));
+  fun->arity = arity;
+  fun->body = body;
+
+  return fun;
+}
+
+
+lobj_t * new_prim(proc_t body, int arity) {
+  lobj_t * fun = LOBJ_CAST(mk_prim(body, arity));
+  LINK(fun);
+
+  return fun;
+}
+
+
 lambda_t * mk_proc(proc_t body, sym_t * env, int arity) {
   lambda_t * fun = malloc(sizeof(lambda_t));
   fun->type = LOBJ_PROC;
@@ -127,7 +144,6 @@ SAFECAST_OP(num_t*, num, "num")
 SAFECAST_OP(err_t*, err, "err")
 SAFECAST_OP(sym_t*, sym, "sym")
 SAFECAST_OP(lambda_t*, proc, "proc")
-SAFECAST_OP(cons_t*, sexpr, "sexpr")
 
 // Deep copy operation
 // Carefully consider whether copying an object means copying an environment!
@@ -179,7 +195,8 @@ lobj_t * unquote(lobj_t * obj) {
 }
 
 // Helpers for working with symbols.
-void intern(sym_t * new, sym_t * env, lobj_t * binding) {
+void intern(sym_t * new, sym_t * env, lobj_t * value) {
+  new->binding = value;
   sym_t * prev, * curr = env;
   int cmp, isleft = 0;
 
@@ -199,19 +216,17 @@ void intern(sym_t * new, sym_t * env, lobj_t * binding) {
   }
 
   if (isleft) {
-    prev->left = mk_sym(new->name, binding);
-    LINK(LOBJ_CAST(prev->left));
+    prev->left = new;
   } else {
-    prev->right = mk_sym(new->name, binding);
-    LINK(LOBJ_CAST(prev->right));
+    prev->right = new;
   }
 }
 
-lobj_t * lookup(char * s, sym_t * env, lobj_t * defaultval) {
+lobj_t * lookup(sym_t * s, sym_t * env, lobj_t * defaultval) {
   sym_t * curr = env;
-  int cmp;
+  int cmp = 1;
 
-  while (curr && (cmp = fcmpstrsym(s, curr))) {
+  while (curr && (cmp = fcmpsym(s, curr))) {
     if (cmp < 0) {
       curr = curr->left;
     } else {
@@ -220,10 +235,27 @@ lobj_t * lookup(char * s, sym_t * env, lobj_t * defaultval) {
   }
 
   if (curr == NULL) {
-    return defaultval ? defaultval : UNBOUND;
+    return (defaultval ? defaultval : UNBOUND);
+  } else { return curr->binding; }
+}
+
+lobj_t * assoc(char * s, sym_t * env) {
+  sym_t * curr = env;
+  int cmp;
+
+ while (curr && (cmp = fcmpstrsym(s, curr))) {
+    if (cmp < 0) {
+      curr = curr->left;
+    } else {
+      curr = curr->right;
+    }
   }
 
-  return curr->binding;
+  if (curr == NULL) {
+    return UNBOUND;
+  }
+
+  return LOBJ_CAST(curr);  
 }
 
 // Primitive operations and functions
@@ -256,8 +288,19 @@ lobj_t * prim_div(lobj_t * args[2]) {
   return new_num(x->value / y->value);
 }
 
+lobj_t * prim_mod(lobj_t * args[2]) {
+  num_t * x = tonum(args[0]);
+  num_t * y = tonum(args[1]);
+  LASSERT(y->value != 0, "Modulo by Zero Error.")
+
+  return new_num(x->value % y->value);
+}
+
 lobj_t * prim_cons(lobj_t * args[2]) {
-  return new_cons(args[0], args[1]);
+  lobj_t * out = new_cons(args[0], args[1]);
+  out->quote = 1;
+
+  return out;
 }
 
 lobj_t * prim_head(lobj_t * args[1]) {
@@ -269,13 +312,29 @@ lobj_t * prim_tail(lobj_t * args[1]) {
 }
 
 lobj_t * prim_def(lobj_t * args[3]) {
-  sym_t * name = tosym(unquote(args[0]));
+  sym_t * name = tosym(args[0]);
+  // Unquote symbol for table insertion
+  name->quote = 0;
   lobj_t * value = args[1];
   sym_t * env = tosym(args[2]);
 
   intern(name, env, value);
   return value;
 }
+
+lobj_t * prim_setq(lobj_t * args[3]) {
+  sym_t * name = tosym(args[0]);
+  // Unquote symbol for table insertion
+  name->quote = 0;
+  lobj_t * value = args[1];
+  sym_t * env = tosym(args[2]);
+
+  lobj_t * result = assoc(name->name, env);
+  LASSERT(!isunbound(result), "Unbound symbol %s\n", name->name)
+  tosym(result)->binding = value;
+  return value;
+}
+
 
 lobj_t * prim_eval(lobj_t * args[2]) {
   return lobj_eval(args[0], tosym(args[1]));

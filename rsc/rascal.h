@@ -21,6 +21,7 @@ typedef struct _num_t num_t;
 typedef struct _sym_t sym_t;
 typedef struct _cons_t cons_t;
 typedef lobj_t * (*proc_t) (lobj_t**);
+typedef struct _prim_t prim_t;
 typedef struct _lambda_t lambda_t;
 
 /* Global variables  */

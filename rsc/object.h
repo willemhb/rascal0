@@ -78,22 +78,33 @@ be defined for functions with different aritys).
 
 */
 
+typedef struct _prim_t {
+ LOBJ_HEAD
+ int arity;
+ proc_t body;
+} prim_t;
+
 typedef struct _lambda_t {
   LOBJ_HEAD
-  int arity;
-  sym_t * env;
-  proc_t body;
+  // A list of formal parameters to be bound when the procedure is called
+  cons_t * formals;
+  // A pair whose car is a tree of symbols representing the local environment
+  // and whose cdr is the parent environment
+  cons_t * env;
+  // An array of expressions which are evaluated in order. The last is returned.
+  lobj_t ** body;
     } lambda_t;
 
 // Type/nil checking macros
-#define iscons(obj)  ((obj)->type == LOBJ_CONS)
-#define issexpr(obj) ((obj)->type == LOBJ_SEXPR)
-#define isnum(obj)   ((obj)->type == LOBJ_NUM)
-#define issym(obj)   ((obj)->type == LOBJ_SYM)
-#define isenv(obj)   ((obj)->type == LOBJ_ENV)
-#define iserr(obj)   ((obj)->type == LOBJ_ERR)
-#define isproc(obj)  ((obj)->type == LOBJ_PROC)
-#define isnil(obj)   ((uint64_t)(obj)==(uint64_t)NIL)
+#define iscons(obj)    ((obj)->type == LOBJ_CONS)
+#define issexpr(obj)   ((obj)->type == LOBJ_SEXPR)
+#define isnum(obj)     ((obj)->type == LOBJ_NUM)
+#define issym(obj)     ((obj)->type == LOBJ_SYM)
+#define isenv(obj)     ((obj)->type == LOBJ_ENV)
+#define iserr(obj)     ((obj)->type == LOBJ_ERR)
+#define isproc(obj)    ((obj)->type == LOBJ_PROC)
+#define isnil(obj)     ((uint64_t)(obj)==(uint64_t)NIL)
+#define isunbound(obj) ((uint64_t)(obj)==(uint64_t)UNBOUND)
 
 /* Forward declarations */
 // Type constructors
@@ -105,6 +116,8 @@ cons_t * mk_cons(lobj_t *, lobj_t *);
 lobj_t * new_cons(lobj_t *, lobj_t *);
 sym_t * mk_sym(char *, lobj_t *);
 lobj_t * new_sym(char *, lobj_t *);
+prim_t * mk_prim(proc_t, int);
+lobj_t * new_prim(proc_t, int);
 lambda_t * mk_proc(proc_t, sym_t *, int);
 lobj_t * new_proc(proc_t, sym_t *, int);
 
@@ -113,28 +126,32 @@ cons_t * tocons(lobj_t *);
 num_t * tonum(lobj_t *);
 err_t * toerr(lobj_t *);
 sym_t * tosym(lobj_t *);
+prim_t * toprim(lobj_t *);
 lambda_t * toproc(lobj_t *);
 
 // Helpers & primitives
 lobj_t * lobj_copy(lobj_t *);
 lobj_t * lobj_quote_copy(lobj_t *);
 lobj_t * unquote(lobj_t *);
-lobj_t * lookup(char *, sym_t *, lobj_t *);
+lobj_t * lookup(sym_t *, sym_t *, lobj_t *);
+lobj_t * assoc(char *, sym_t *);
 void intern(sym_t *, sym_t *, lobj_t *);
 lobj_t * prim_add(lobj_t * args[2]);
 lobj_t * prim_sub(lobj_t * args[2]);
 lobj_t * prim_mul(lobj_t * args[2]);
 lobj_t * prim_div(lobj_t * args[2]);
+lobj_t * prim_mod(lobj_t * args[2]);
 lobj_t * prim_cons(lobj_t * args[2]);
 lobj_t * prim_head(lobj_t * args[1]);
 lobj_t * prim_tail(lobj_t * args[1]);
 lobj_t * prim_def(lobj_t * args[3]);
+lobj_t * prim_setq(lobj_t * args[3]);
 lobj_t * prim_eval(lobj_t * args[2]);
 lobj_t * prim_apply(lobj_t * args[2]);
 lobj_t * prim_globals(lobj_t ** args);
 lobj_t * prim_allocations(lobj_t ** args);
 
-/* Macros  */
+/* Macros */
 #define LASSERT(cond, fmt, ...)                     \
   if (!(cond)) { ROOT = NIL;                        \
       CURRENT_ERROR = new_err(fmt, ##__VA_ARGS__);  \

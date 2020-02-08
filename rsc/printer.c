@@ -1,14 +1,23 @@
 #include "printer.h"
 
 void lobj_print(lobj_t * v) {
-  
+  if (v->quote) { lobj_print_quote(v); return; }
   switch(v->type) {
   case LOBJ_NUM:   printf("%li", tonum(v)->value); break;
   case LOBJ_ERR:   printf("Error: %s", toerr(v)->msg); break;
   case LOBJ_SYM:   printf("%s", tosym(v)->name); break;
-  case LOBJ_SEXPR: lobj_expr_print(v, '(', ')'); break;
+  case LOBJ_CONS:  lobj_expr_print(v, '(', ')'); break;
+  case LOBJ_PROC:  printf("#proc"); break;
+  default: printf("#");
+  }
+}
+
+void lobj_print_quote(lobj_t * v) {
+  switch (v->type) {
+  case LOBJ_NUM:   printf("%li", tonum(v)->value); break;
+  case LOBJ_ERR:   printf("Error: %s", toerr(v)->msg); break;
+  case LOBJ_SYM:   printf(":%s", tosym(v)->name); break;
   case LOBJ_CONS:  lobj_expr_print(v, '[', ']'); break;
-  case LOBJ_ENV:   printf("#%s", toenv(v)->name); break;
   case LOBJ_PROC:  printf("#proc"); break;
   default: printf("#");
   }

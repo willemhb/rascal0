@@ -8,6 +8,7 @@
 /* Forward declarations  */
 // Printer
 void lobj_print(lobj_t *);
+void lobj_print_quote(lobj_t *);
 void lobj_expr_print(lobj_t *, char, char);
 void lobj_println(lobj_t *);
 

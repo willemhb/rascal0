@@ -11,7 +11,9 @@ lobj_t * lobj_eval(lobj_t * v, sym_t * env) {
   case LOBJ_PROC:
     break;
   case LOBJ_SYM:{
-    out = lookup(tosym(out)->name, env, out);
+    sym_t * sym_name = tosym(out);
+    out = lookup(sym_name, env, NULL);
+    LASSERT(!isunbound(out), "Unbound symbol %s", sym_name->name)
     break;
   }case LOBJ_CONS:{
     // Call recursively on car and cdr.
@@ -39,6 +41,7 @@ lobj_t * lobj_qeval(lobj_t * v, sym_t * env) {
      lobj_t * head = lobj_eval(car(out), env);
      lobj_t * tail = lobj_eval(cdr(out), env);
      out = new_cons(head, tail);
+     out->quote = 1;
      break;
    }
   }

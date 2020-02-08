@@ -17,14 +17,14 @@ lobj_t * lobj_read_num(mpc_ast_t * t) {
   return errno != ERANGE ? new_num(x) : new_err("Invalid Number");
 }
 
-lobj_t * lobj_read(mpc_ast_t * t, env_t * env) {
+lobj_t * lobj_read(mpc_ast_t * t, sym_t * env) {
   // Ignore root
   if (streq(t->tag, ">")) return lobj_read(t->children[1], env);
 
   // Evaluate atoms directly
-  if (strstr(t->tag, "quote")) return lobj_read_quote(t, env);
+  if (strstr(t->tag, "quote")) return lobj_read_quote(t->children[1], env);
   if (strstr(t->tag, "number")) return lobj_read_num(t);
-  if (strstr(t->tag, "symbol")) return new_sym(t->contents);
+  if (strstr(t->tag, "symbol")) return new_sym(t->contents, NULL);
 
   
   /* If sexpr or list, then create an empty list  */
@@ -41,6 +41,7 @@ lobj_t * lobj_read(mpc_ast_t * t, env_t * env) {
       if (streq(child->tag, "regex")) continue;
 
       output = new_cons(lobj_read(child, env), output);
+      output->quote = 1;
     }
 
     output->quote = strstr(t->tag, "list") ? 1 : 0;
@@ -48,13 +49,13 @@ lobj_t * lobj_read(mpc_ast_t * t, env_t * env) {
   return output;
 }
 
-lobj_t * lobj_read_quote(mpc_ast_t * t, env_t * env) {
+lobj_t * lobj_read_quote(mpc_ast_t * t, sym_t * env) {
   // Quoted numbers are read directly; quoted numbers are not distinguished from regular numbers
   // for now.
   if (strstr(t->tag, "number")) return lobj_read_num(t);
 
   lobj_t * output;
-  if (strstr(t->tag, "symbol")) output = new_sym(t->contents);
+  if (strstr(t->tag, "symbol")) output = new_sym(t->contents, NULL);
   /* If sexpr or list, then create an empty list  */
   if (strstr(t->tag, "cons")) {
     output = NIL;
@@ -71,6 +72,7 @@ lobj_t * lobj_read_quote(mpc_ast_t * t, env_t * env) {
 	if (streq(child->tag, "regex")) continue;
 
       output = new_cons(lobj_read(child, env), output);
+      output->quote = 1;
     }
     } else {
       for (int i = t->children_num-1; i > 0; i--) {

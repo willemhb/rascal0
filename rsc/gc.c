@@ -6,8 +6,8 @@ void lobj_del(lobj_t * obj) {
   if (obj == NULL) return;
 
   switch (obj->type) {
-  case LOBJ_ENV:{
-    env_t * body = toenv(obj);
+  case LOBJ_SYM:{
+    sym_t * body = tosym(obj);
     free(body->name);
     free(body);
     break;
@@ -22,20 +22,11 @@ void lobj_del(lobj_t * obj) {
     free(body->msg);
     free(body);
     break;
-  }case LOBJ_SYM:{
-    sym_t * body = tosym(obj);
-    free(body->name);
-    free(body);
-    break;
    }case LOBJ_CONS:{
     cons_t * body = tocons(obj);
     free(body);
     break;
-    }case LOBJ_SEXPR:{
-       cons_t * body = tosexpr(obj);
-       free(body);
-       break;
-     }
+    }
   }
 
   ALLOCATIONS--;
@@ -52,20 +43,17 @@ void mark(lobj_t * obj) {
 
   switch (obj->type) {
     // Case 1: atomic objects (no references)
-  case LOBJ_SYM:
   case LOBJ_NUM:
   case LOBJ_ERR:
     break;
     // Case 2: pairs
-  case LOBJ_CONS:
-  case LOBJ_SEXPR:{
-    mark(car(obj));
-    mark(cdr(obj));
+  case LOBJ_CONS:{
+    mark(fcar(obj));
+    mark(fcdr(obj));
     break;
     // Case 3: environments
-  }case LOBJ_ENV:{
-     env_t * env = toenv(obj);
-     printf("Marking env object %s\n", env->name);
+  }case LOBJ_SYM:{
+     sym_t * env = tosym(obj);
      mark(env->binding);
      mark(LOBJ_CAST(env->left));
      mark(LOBJ_CAST(env->right));
