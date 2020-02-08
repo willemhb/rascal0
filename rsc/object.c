@@ -19,42 +19,19 @@ lobj_t * new_cons(lobj_t * car_, lobj_t * cdr_) {
   return out;
 }
 
-sym_t * mk_sym(char * name) {
+sym_t * mk_sym(char * name, lobj_t * binding) {
   sym_t * s = malloc(sizeof(sym_t));
   s->type = LOBJ_SYM;
   s->tag = GC_WHITE;
   s->quote = 0;
   str_init(s->name, name);
+  s->binding = binding ? binding : UNBOUND;
 
   return s;
 }
 
-lobj_t * new_sym(char * name) {
-  lobj_t * out = LOBJ_CAST(mk_sym(name));
-  LINK(out);
-
-  return out;
-}
-
-
-env_t * mk_env(char * name, lobj_t * binding) {
-  if (binding == NULL) {
-    binding = NIL;
-  }
-
-  env_t * s = malloc(sizeof(env_t));
-  s->tag = GC_WHITE;
-  s->type = LOBJ_ENV;
-  s->quote = 0;
-  str_init(s->name, name);
-  s->binding = binding;
-  s->left = s->right = NULL;
-
-  return s;
-}
-
-lobj_t * new_env(char * name, lobj_t * binding) {
-  lobj_t * out = LOBJ_CAST(mk_env(name, binding));
+lobj_t * new_sym(char * name, lobj_t * binding) {
+  lobj_t * out = LOBJ_CAST(mk_sym(name, binding));
   LINK(out);
 
   return out;
@@ -117,7 +94,7 @@ lobj_t * new_err(char * fmt, ...) {
 }
 
 
-lambda_t * mk_proc(proc_t body, env_t * env, int arity) {
+lambda_t * mk_proc(proc_t body, sym_t * env, int arity) {
   lambda_t * fun = malloc(sizeof(lambda_t));
   fun->type = LOBJ_PROC;
   fun->tag = GC_WHITE;
@@ -129,7 +106,7 @@ lambda_t * mk_proc(proc_t body, env_t * env, int arity) {
   return fun;
 }
 
-lobj_t * new_proc(proc_t body, env_t * env, int arity) {
+lobj_t * new_proc(proc_t body, sym_t * env, int arity) {
   lobj_t * out = LOBJ_CAST(mk_proc(body, env, arity));
   LINK(out);
 
@@ -149,7 +126,6 @@ SAFECAST_OP(cons_t*, cons, "cons")
 SAFECAST_OP(num_t*, num, "num")
 SAFECAST_OP(err_t*, err, "err")
 SAFECAST_OP(sym_t*, sym, "sym")
-SAFECAST_OP(env_t*, env, "env")
 SAFECAST_OP(lambda_t*, proc, "proc")
 SAFECAST_OP(cons_t*, sexpr, "sexpr")
 
@@ -164,21 +140,19 @@ SAFECAST_OP(cons_t*, sexpr, "sexpr")
     switch (obj->type) {
     case LOBJ_NUM: return new_num(tonum(obj)->value);
     case LOBJ_ERR: return new_err(toerr(obj)->msg);
-    case LOBJ_SYM: return new_sym(tosym(obj)->name);
-    case LOBJ_ENV:{
-      env_t * env = toenv(obj);
-      env_t * out_env = mk_env(env->name, lobj_copy(env->binding));
-      out_env->left = toenv(lobj_copy(LOBJ_CAST(env->left)));
-      out_env->right = toenv(lobj_copy(LOBJ_CAST(env->right)));
+    case LOBJ_SYM:{
+      sym_t * env = tosym(obj);
+      sym_t * out_env = mk_sym(env->name, lobj_copy(env->binding));
+      out_env->left = tosym(lobj_copy(LOBJ_CAST(env->left)));
+      out_env->right = tosym(lobj_copy(LOBJ_CAST(env->right)));
       out = LOBJ_CAST(out_env);
       break;
     }case LOBJ_PROC:{
        lambda_t * proc = toproc(obj);
-       lambda_t * out_proc = mk_proc(proc->body, toenv(lobj_copy(LOBJ_CAST(proc->env))), proc->arity);
+       lambda_t * out_proc = mk_proc(proc->body, tosym(lobj_copy(LOBJ_CAST(proc->env))), proc->arity);
        out = LOBJ_CAST(out_proc);
        break;
      }case LOBJ_CONS: return new_cons(lobj_copy(car(obj)), lobj_copy(cdr(obj)));
-    case LOBJ_SEXPR: return new_cons(lobj_copy(cars(obj)), lobj_copy(cdrs(obj)));
      }
 
     LINK(out);
@@ -205,13 +179,12 @@ lobj_t * unquote(lobj_t * obj) {
 }
 
 // Helpers for working with symbols.
-void intern(sym_t * new, env_t * env, lobj_t * binding) {
-  env_t * prev, * curr = env;
+void intern(sym_t * new, sym_t * env, lobj_t * binding) {
+  sym_t * prev, * curr = env;
   int cmp, isleft = 0;
-  if (binding == NULL) binding = NIL;
 
   while (curr) {
-    cmp = fcmpsymenv(new, curr);
+    cmp = fcmpsym(new, curr);
     if (cmp < 0) {
       prev = curr;
       curr = curr->left;
@@ -226,19 +199,19 @@ void intern(sym_t * new, env_t * env, lobj_t * binding) {
   }
 
   if (isleft) {
-    prev->left = mk_env(new->name, binding);
+    prev->left = mk_sym(new->name, binding);
     LINK(LOBJ_CAST(prev->left));
   } else {
-    prev->right = mk_env(new->name, binding);
+    prev->right = mk_sym(new->name, binding);
     LINK(LOBJ_CAST(prev->right));
   }
 }
 
-lobj_t * lookup(char * s, env_t * env, lobj_t * defaultval) {
-  env_t * curr = env;
+lobj_t * lookup(char * s, sym_t * env, lobj_t * defaultval) {
+  sym_t * curr = env;
   int cmp;
 
-  while (curr && (cmp = fcmpstrenv(s, curr))) {
+  while (curr && (cmp = fcmpstrsym(s, curr))) {
     if (cmp < 0) {
       curr = curr->left;
     } else {
@@ -247,8 +220,7 @@ lobj_t * lookup(char * s, env_t * env, lobj_t * defaultval) {
   }
 
   if (curr == NULL) {
-    LASSERT(curr != NULL, "Unbound symbol  %s", s)
-    return defaultval;
+    return defaultval ? defaultval : UNBOUND;
   }
 
   return curr->binding;
@@ -299,14 +271,14 @@ lobj_t * prim_tail(lobj_t * args[1]) {
 lobj_t * prim_def(lobj_t * args[3]) {
   sym_t * name = tosym(unquote(args[0]));
   lobj_t * value = args[1];
-  env_t * env = toenv(args[2]);
+  sym_t * env = tosym(args[2]);
 
   intern(name, env, value);
   return value;
 }
 
 lobj_t * prim_eval(lobj_t * args[2]) {
-  return lobj_eval(args[0], toenv(args[1]));
+  return lobj_eval(args[0], tosym(args[1]));
 }
 
 lobj_t * prim_apply(lobj_t * args[2]) {

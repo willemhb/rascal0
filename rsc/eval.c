@@ -1,14 +1,13 @@
 #include "eval.h"
 
 
-lobj_t * lobj_eval(lobj_t * v, env_t * env) {
+lobj_t * lobj_eval(lobj_t * v, sym_t * env) {
   lobj_t * out = v;
   // Quoted items are self evaluating
-  if (out->quote) return out; 
+  if (out->quote) return lobj_qeval(out, env);
   switch (out->type) {
   case LOBJ_NUM:
   case LOBJ_ERR:
-  case LOBJ_ENV:
   case LOBJ_PROC:
     break;
   case LOBJ_SYM:{
@@ -16,24 +15,35 @@ lobj_t * lobj_eval(lobj_t * v, env_t * env) {
     break;
   }case LOBJ_CONS:{
     // Call recursively on car and cdr.
-     setcar(out, lobj_eval(car(out), env));
-     setcdr(out, lobj_eval(cdr(out), env));
+     lobj_t * head = lobj_eval(car(out), env);
+     lobj_t * tail = lobj_eval(cdr(out), env);
+     out = apply(toproc(head), tail);
      break;
-   }case LOBJ_SEXPR:{
-     lobj_t * head = lobj_eval(cars(out), env);
-    out = apply(toproc(head), lobj_eval(cdrs(out), env));
-    break;
    }
   }
   
   return out;
 }
 
-// Force evaluation of a quoted expression
-lobj_t * lobj_qeval(lobj_t * v, env_t * env) {
-  lobj_t * expr = unquote(v);
 
-  return lobj_eval(expr, env);
+lobj_t * lobj_qeval(lobj_t * v, sym_t * env) {
+  lobj_t * out = v;
+  switch (out->type) {
+  case LOBJ_NUM:
+  case LOBJ_ERR:
+  case LOBJ_PROC:
+  case LOBJ_SYM:
+    break;
+  case LOBJ_CONS:{
+    // Call recursively on car and cdr.
+     lobj_t * head = lobj_eval(car(out), env);
+     lobj_t * tail = lobj_eval(cdr(out), env);
+     out = new_cons(head, tail);
+     break;
+   }
+  }
+  
+  return out;
 };
 
 lobj_t * apply(lambda_t * fun, lobj_t * args) {

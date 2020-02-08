@@ -20,13 +20,12 @@ typedef struct _err_t err_t;
 typedef struct _num_t num_t;
 typedef struct _sym_t sym_t;
 typedef struct _cons_t cons_t;
-typedef struct _env_t env_t;
 typedef lobj_t * (*proc_t) (lobj_t**);
 typedef struct _lambda_t lambda_t;
 
 /* Global variables  */
 // Memory and stack management, environment
-env_t * GLOBALS;
+sym_t * GLOBALS;
 // Head of the list of all allocated objects
 lobj_t * ALLOC;
 // Head of all reachable objects
@@ -43,6 +42,8 @@ This is a target for  optimization once the interpreter is fleshed out and worki
 */
 // Reference to unique NIL object
 lobj_t * NIL;
+// Reference to unique UNBOUND object for unbound symbols
+lobj_t * UNBOUND;
 int ALLOCATIONS;
 // Arbitrary allocation limit (should research a good one)
 #define ALLOCATIONS_LIMIT 128

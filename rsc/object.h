@@ -20,7 +20,7 @@ will be needed.
 #include "rascal.h"
 
 // type codes
-enum { LOBJ_CONS, LOBJ_SEXPR, LOBJ_SYM, LOBJ_ENV, LOBJ_ERR, LOBJ_PROC, LOBJ_NUM };
+enum { LOBJ_CONS, LOBJ_SYM, LOBJ_ERR, LOBJ_PROC, LOBJ_NUM };
 
 /*
 GC tags. GC_GREY is included for use in a future implementation
@@ -28,8 +28,7 @@ of a tricolor collector. GC_WHITE objects will be collected when
 the garbage collector is run. GC_BLACK objects are protected from
 collection.
  */
-enum { GC_WHITE, GC_GREY, GC_BLACK };
- 
+enum { GC_WHITE, GC_GREY, GC_BLACK }; 
 /*
   The generic LOBJ_HEAD macro adds type and GC information to the front of every object
  */
@@ -64,15 +63,10 @@ typedef struct _cons_t {
 typedef struct _sym_t {
   LOBJ_HEAD
   char * name;
-} sym_t;
-
-typedef struct _env_t {
-  LOBJ_HEAD
-  char * name;
   lobj_t * binding;
-  struct _env_t * left;
-  struct _env_t * right;
-} env_t;
+  struct _sym_t * left;
+  struct _sym_t * right;
+} sym_t;
 
 /*
 
@@ -87,7 +81,7 @@ be defined for functions with different aritys).
 typedef struct _lambda_t {
   LOBJ_HEAD
   int arity;
-  env_t * env;
+  sym_t * env;
   proc_t body;
     } lambda_t;
 
@@ -109,28 +103,24 @@ num_t * mk_num(long);
 lobj_t * new_num(long);
 cons_t * mk_cons(lobj_t *, lobj_t *);
 lobj_t * new_cons(lobj_t *, lobj_t *);
-sym_t * mk_sym(char *);
-lobj_t * new_sym(char *);
-env_t * mk_env(char *, lobj_t *);
-lobj_t * new_env(char *, lobj_t *);
-lambda_t * mk_proc(proc_t, env_t *, int);
-lobj_t * new_proc(proc_t, env_t *, int);
+sym_t * mk_sym(char *, lobj_t *);
+lobj_t * new_sym(char *, lobj_t *);
+lambda_t * mk_proc(proc_t, sym_t *, int);
+lobj_t * new_proc(proc_t, sym_t *, int);
 
 // Safecast operators
 cons_t * tocons(lobj_t *);
 num_t * tonum(lobj_t *);
 err_t * toerr(lobj_t *);
 sym_t * tosym(lobj_t *);
-env_t * toenv(lobj_t *);
 lambda_t * toproc(lobj_t *);
-cons_t * tosexpr(lobj_t *);
 
 // Helpers & primitives
 lobj_t * lobj_copy(lobj_t *);
 lobj_t * lobj_quote_copy(lobj_t *);
 lobj_t * unquote(lobj_t *);
-lobj_t * lookup(char *, env_t *, lobj_t *);
-void intern(sym_t *, env_t *, lobj_t *);
+lobj_t * lookup(char *, sym_t *, lobj_t *);
+void intern(sym_t *, sym_t *, lobj_t *);
 lobj_t * prim_add(lobj_t * args[2]);
 lobj_t * prim_sub(lobj_t * args[2]);
 lobj_t * prim_mul(lobj_t * args[2]);
@@ -154,12 +144,8 @@ lobj_t * prim_allocations(lobj_t ** args);
 // Accessors and mutators for cons. Those prefixed with f are unsafe but faster
 #define car(pair)            (tocons(pair)->_car)
 #define cdr(pair)            (tocons(pair)->_cdr)
-#define cars(pair)           (tosexpr(pair)->_car)
-#define cdrs(pair)           (tosexpr(pair)->_cdr)
 #define setcar(pair, value)  (tocons(pair)->_car = (value))
 #define setcdr(pair, value)  (tocons(pair)->_cdr = (value))
-#define setcars(pair, value) (tosexpr(pair)->_car = (value))
-#define setcdrs(pair, value) (tosexpr(pair)->_cdr = (value))
 #define fcar(pair)           (((cons_t*)(pair))->_car)
 #define fcdr(pair)           (((cons_t*)(pair))->_cdr)
 #define fsetcar(pair, v)     (((cons_t*)(pair))->_car = (v))
@@ -169,18 +155,8 @@ lobj_t * prim_allocations(lobj_t ** args);
 #define cmpsym(sym1, sym2)   (strcmp(tosym(sym1)->name, tosym(sym2)->name))
 #define cmpstrsym(str, sym)  (strcmp((str), tosym(sym)->name))
 #define cmpsymstr(sym, str)  (strcmp(tosym(sym)->name, (str)))
-#define cmpenv(env1, env2)   (strcmp(toenv(env1)->name, toenv(env2)->name))
-#define cmpstrenv(str, env)  (strcmp((str), toenv(env)->name))
-#define cmpenvstr(env, str)  (strcmp(toenv(env)->name, (str)))
-#define cmpsymenv(sym, env)  (strcmp(tosym(sym)->name, toenv(env)->name))
-#define cmpenvsym(env, sym)  (strcmp(toenv(env)->name, tosym(sym)->name))
 #define fcmpsym(sym1, sym2)  (strcmp((sym1)->name, (sym2)->name))
 #define fcmpstrsym(str, sym) (strcmp((str), (sym)->name))
-#define fcmpsymstr(sym, str) (strcmp((sym)->name, (str)))
-#define fcmpenv(env1, env2)  (strcmp((env1)->name, (env2)->name))
-#define fcmpstrenv(str, env) (strcmp((str), (env)->name))
-#define fcmpenvstr(env, str) (strcmp((env)->name, (str)))
-#define fcmpsymenv(sym, env) (strcmp((sym)->name, (env)->name))
-#define fcmpenvsym(env, sym) (strcmp((env)->name, (sym)->name))
+#define fcmpsymstr(sym, str) (strcmp((sym)->name, str))
 
 #endif
