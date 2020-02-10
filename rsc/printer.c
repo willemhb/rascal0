@@ -7,6 +7,7 @@ void lobj_print(lobj_t * v) {
   case LOBJ_ERR:   printf("Error: %s", toerr(v)->msg); break;
   case LOBJ_SYM:   printf("%s", tosym(v)->name); break;
   case LOBJ_CONS:  lobj_expr_print(v, '(', ')'); break;
+  case LOBJ_PRIM:
   case LOBJ_PROC:  printf("#proc"); break;
   default: printf("#");
   }
@@ -18,6 +19,7 @@ void lobj_print_quote(lobj_t * v) {
   case LOBJ_ERR:   printf("Error: %s", toerr(v)->msg); break;
   case LOBJ_SYM:   printf(":%s", tosym(v)->name); break;
   case LOBJ_CONS:  lobj_expr_print(v, '[', ']'); break;
+  case LOBJ_PRIM:
   case LOBJ_PROC:  printf("#proc"); break;
   default: printf("#");
   }
@@ -61,11 +63,10 @@ void show_tree(mpc_ast_t * t, int tab) {
   }
 }
 
-void show_proc_info(lambda_t * fun) {
+void show_proc_info(prim_t * fun) {
   printf("type: %d\n", fun->type);
   printf("arity: %d\n", fun->arity);
   printf("address of body: %p\n", fun->body);
-  printf("address of env: %p\n", fun->env);
 }
 
 void show_alloc_list() {

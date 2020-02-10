@@ -28,22 +28,24 @@ void initialize_lisp() {
   GLOBALS = mk_sym("nil", NULL);
   NIL = LOBJ_CAST(GLOBALS);
   // Nil must be self-evaluating.
+  tosym(NIL)->binding = NIL;
   NIL->quote = 1;
   ALLOC = NIL;
 
-  intern_obj(new_sym("+", NULL), GLOBALS, new_proc(prim_add, GLOBALS, 2));
-  intern_obj(new_sym("-", NULL), GLOBALS, new_proc(prim_sub, GLOBALS, 2));
-  intern_obj(new_sym("*", NULL), GLOBALS, new_proc(prim_mul, GLOBALS, 2));
-  intern_obj(new_sym("/", NULL), GLOBALS, new_proc(prim_div, GLOBALS, 2));
-  intern_obj(new_sym("cons", NULL), GLOBALS, new_proc(prim_cons, GLOBALS, 2));
-  intern_obj(new_sym("head", NULL), GLOBALS, new_proc(prim_head, GLOBALS, 1));
-  intern_obj(new_sym("tail", NULL), GLOBALS, new_proc(prim_tail, GLOBALS, 1));
-  intern_obj(new_sym("def", NULL), GLOBALS, new_proc(prim_def, GLOBALS, 3));
-  intern_obj(new_sym("eval", NULL), GLOBALS, new_proc(prim_eval, GLOBALS, 2));
-  intern_obj(new_sym("apply", NULL), GLOBALS, new_proc(prim_apply, GLOBALS, 2));
-  intern_obj(new_sym("globals", NULL), GLOBALS, new_proc(prim_globals, GLOBALS, 0));
-  intern_obj(new_sym("allocations", NULL), GLOBALS, new_proc(prim_allocations, GLOBALS, 0));
-  intern_obj(new_sym("setq", NULL), GLOBALS, new_proc(prim_setq, GLOBALS, 3));
+  intern_obj(new_sym("+", NULL), GLOBALS, new_prim(prim_add,  2));
+  intern_obj(new_sym("-", NULL), GLOBALS, new_prim(prim_sub, 2));
+  intern_obj(new_sym("*", NULL), GLOBALS, new_prim(prim_mul, 2));
+  intern_obj(new_sym("/", NULL), GLOBALS, new_prim(prim_div, 2));
+  intern_obj(new_sym("cons", NULL), GLOBALS, new_prim(prim_cons, 2));
+  intern_obj(new_sym("head", NULL), GLOBALS, new_prim(prim_head, 1));
+  intern_obj(new_sym("tail", NULL), GLOBALS, new_prim(prim_tail, 1));
+  intern_obj(new_sym("def", NULL), GLOBALS, new_prim(prim_def, 3));
+  intern_obj(new_sym("eval", NULL), GLOBALS, new_prim(prim_eval, 2));
+  intern_obj(new_sym("apply", NULL), GLOBALS, new_prim(prim_apply, 3));
+  intern_obj(new_sym("globals", NULL), GLOBALS, new_prim(prim_globals, 0));
+  intern_obj(new_sym("allocations", NULL), GLOBALS, new_prim(prim_allocations, 0));
+  intern_obj(new_sym("setq", NULL), GLOBALS, new_prim(prim_setq, 3));
+  intern_obj(new_sym("fn", NULL), GLOBALS, new_prim(prim_fn, 3));
   return;
 }
 
@@ -83,9 +85,10 @@ int main(int argc, char** argv) {
     mpc_result_t r;
 
     if (mpc_parse("<stdin>", input, Rascal, &r)) {
-      show_tree(r.output, 0);
-      ROOT = lobj_eval(lobj_read(r.output, GLOBALS), GLOBALS);
+      //show_tree(r.output, 0);
+      ROOT = lobj_read(r.output, GLOBALS);
       lobj_println(ROOT);
+      lobj_println(lobj_eval(ROOT, GLOBALS));
 
 	
       if (ALLOCATIONS > ALLOCATIONS_LIMIT) {
@@ -103,7 +106,7 @@ int main(int argc, char** argv) {
     
   }
   
-  mpc_cleanup(8, Number, Symbol, Quote,  List, Sexpr, Cons, Expr, Rascal);  
+  mpc_cleanup(8, Number, Symbol,  Quote,  List, Sexpr, Cons, Expr, Rascal);  
   
   return 0;
 }

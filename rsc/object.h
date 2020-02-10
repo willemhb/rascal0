@@ -20,7 +20,7 @@ will be needed.
 #include "rascal.h"
 
 // type codes
-enum { LOBJ_CONS, LOBJ_SYM, LOBJ_ERR, LOBJ_PROC, LOBJ_NUM };
+enum { LOBJ_CONS, LOBJ_SYM, LOBJ_ERR, LOBJ_PROC, LOBJ_NUM, LOBJ_PRIM };
 
 /*
 GC tags. GC_GREY is included for use in a future implementation
@@ -36,7 +36,7 @@ enum { GC_WHITE, GC_GREY, GC_BLACK };
   int type;       \
   int tag;        \
   int quote;      \
-  lobj_t * next;
+  lobj_t * next;  
 
 typedef struct _lobj_t {
   LOBJ_HEAD
@@ -46,7 +46,7 @@ typedef struct _lobj_t {
 
 typedef struct _num_t {
   LOBJ_HEAD
-  long value;
+  int64_t value;
 } num_t;
 
 typedef struct _err_t{
@@ -56,16 +56,15 @@ typedef struct _err_t{
 
 typedef struct _cons_t {
   LOBJ_HEAD
-  lobj_t * _car;
-  lobj_t * _cdr;
+  // Fields are car and cdr
+  lobj_t * body[2];
 } cons_t;
 
 typedef struct _sym_t {
   LOBJ_HEAD
+  // Fields are binding, parent, left, and right.
+  lobj_t * body[4];
   char * name;
-  lobj_t * binding;
-  struct _sym_t * left;
-  struct _sym_t * right;
 } sym_t;
 
 /*
@@ -86,13 +85,8 @@ typedef struct _prim_t {
 
 typedef struct _lambda_t {
   LOBJ_HEAD
-  // A list of formal parameters to be bound when the procedure is called
-  cons_t * formals;
-  // A pair whose car is a tree of symbols representing the local environment
-  // and whose cdr is the parent environment
-  cons_t * env;
-  // An array of expressions which are evaluated in order. The last is returned.
-  lobj_t ** body;
+  // Fields are formals, env, and body.
+  lobj_t * body[3];
     } lambda_t;
 
 // Type/nil checking macros
@@ -102,6 +96,7 @@ typedef struct _lambda_t {
 #define issym(obj)     ((obj)->type == LOBJ_SYM)
 #define isenv(obj)     ((obj)->type == LOBJ_ENV)
 #define iserr(obj)     ((obj)->type == LOBJ_ERR)
+#define isprim(obj)    ((obj)->type == LOBJ_PRIM)
 #define isproc(obj)    ((obj)->type == LOBJ_PROC)
 #define isnil(obj)     ((uint64_t)(obj)==(uint64_t)NIL)
 #define isunbound(obj) ((uint64_t)(obj)==(uint64_t)UNBOUND)
@@ -110,16 +105,16 @@ typedef struct _lambda_t {
 // Type constructors
 err_t * mk_err(char *, ...);
 lobj_t * new_err(char *, ...);
-num_t * mk_num(long);
-lobj_t * new_num(long);
+num_t * mk_num(int64_t);
+lobj_t * new_num(int64_t);
 cons_t * mk_cons(lobj_t *, lobj_t *);
 lobj_t * new_cons(lobj_t *, lobj_t *);
-sym_t * mk_sym(char *, lobj_t *);
-lobj_t * new_sym(char *, lobj_t *);
+sym_t * mk_sym(char *, lobj_t *, lobj_t *, lobj_t *, lobj_t *);
+lobj_t * new_sym(char *, lobj_t *, lobj_t *, lobj_t *, lobj_t *);
 prim_t * mk_prim(proc_t, int);
 lobj_t * new_prim(proc_t, int);
-lambda_t * mk_proc(proc_t, sym_t *, int);
-lobj_t * new_proc(proc_t, sym_t *, int);
+lambda_t * mk_proc(lobj_t *, lobj_t *, lobj_t *);
+lobj_t * new_proc(lobj_t *, lobj_t *, lobj_t *);
 
 // Safecast operators
 cons_t * tocons(lobj_t *);
@@ -134,8 +129,9 @@ lobj_t * lobj_copy(lobj_t *);
 lobj_t * lobj_quote_copy(lobj_t *);
 lobj_t * unquote(lobj_t *);
 lobj_t * lookup(sym_t *, sym_t *, lobj_t *);
-lobj_t * assoc(char *, sym_t *);
+sym_t ** assoc(char *, sym_t **);
 void intern(sym_t *, sym_t *, lobj_t *);
+void update(sym_t *, sym_t *, lobj_t *);
 lobj_t * prim_add(lobj_t * args[2]);
 lobj_t * prim_sub(lobj_t * args[2]);
 lobj_t * prim_mul(lobj_t * args[2]);
@@ -147,9 +143,10 @@ lobj_t * prim_tail(lobj_t * args[1]);
 lobj_t * prim_def(lobj_t * args[3]);
 lobj_t * prim_setq(lobj_t * args[3]);
 lobj_t * prim_eval(lobj_t * args[2]);
-lobj_t * prim_apply(lobj_t * args[2]);
+lobj_t * prim_apply(lobj_t * args[3]);
 lobj_t * prim_globals(lobj_t ** args);
 lobj_t * prim_allocations(lobj_t ** args);
+lobj_t * prim_fn(lobj_t * args[3]);
 
 /* Macros */
 #define LASSERT(cond, fmt, ...)                     \
@@ -158,15 +155,15 @@ lobj_t * prim_allocations(lobj_t ** args);
       longjmp(TOPLEVEL, 1); }
 
  
-// Accessors and mutators for cons. Those prefixed with f are unsafe but faster
-#define car(pair)            (tocons(pair)->_car)
-#define cdr(pair)            (tocons(pair)->_cdr)
-#define setcar(pair, value)  (tocons(pair)->_car = (value))
-#define setcdr(pair, value)  (tocons(pair)->_cdr = (value))
-#define fcar(pair)           (((cons_t*)(pair))->_car)
-#define fcdr(pair)           (((cons_t*)(pair))->_cdr)
-#define fsetcar(pair, v)     (((cons_t*)(pair))->_car = (v))
-#define fsetcdr(pair, v)     (((cons_t*)(pair))->_cdr = (v))
+// Accessors and mutators for data types. Those prefixed with f are unsafe but faster
+#define car(pair)            (tocons(pair)->body[0])
+#define cdr(pair)            (tocons(pair)->body[1])
+#define setcar(pair, value)  (tocons(pair)->body[0] = (value))
+#define setcdr(pair, value)  (tocons(pair)->body[1] = (value))
+#define fcar(pair)           (((cons_t*)(pair))->body[0])
+#define fcdr(pair)           (((cons_t*)(pair))->body[1])
+#define fsetcar(pair, v)     (((cons_t*)(pair))->body[0] = (v))
+#define fsetcdr(pair, v)     (((cons_t*)(pair))->body[1] = (v))
 
 // Macros for comparing symbols and environments. Those prefixed with f are unsafe but faster
 #define cmpsym(sym1, sym2)   (strcmp(tosym(sym1)->name, tosym(sym2)->name))

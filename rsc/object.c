@@ -25,7 +25,8 @@ sym_t * mk_sym(char * name, lobj_t * binding) {
   s->tag = GC_WHITE;
   s->quote = 0;
   str_init(s->name, name);
-  s->binding = binding ? binding : UNBOUND;
+  s->binding = binding ? binding : LOBJ_CAST(s);
+  s->left = s->right = s->parent = tosym(NIL);
 
   return s;
 }
@@ -62,13 +63,11 @@ err_t * mk_err(char * fmt, ...) {
 
   va_list va;
   va_start(va, fmt);
-  char * msg_buff = malloc(512);
-  vsnprintf(msg_buff, 511, fmt, va);
-  v->msg = malloc(strlen(msg_buff)+1);
-  v->msg = strcpy(v->msg, msg_buff);
-  free(msg_buff);
-
+  v-> msg = malloc(512);
+  vsnprintf(v->msg, 511, fmt, va);
+  v->msg = realloc(v->msg, strlen(v->msg)+1);
   va_end(va);
+
   return v;
 }
 
@@ -80,12 +79,9 @@ lobj_t * new_err(char * fmt, ...) {
 
   va_list va;
   va_start(va, fmt);
-  char * msg_buff = malloc(512);
-  vsnprintf(msg_buff, 511, fmt, va);
-  v->msg = malloc(strlen(msg_buff)+1);
-  v->msg = strcpy(v->msg, msg_buff);
-  free(msg_buff);
-
+  v-> msg = malloc(512);
+  vsnprintf(v->msg, 511, fmt, va);
+  v->msg = realloc(v->msg, strlen(v->msg)+1);
   va_end(va);
 
   lobj_t * out = LOBJ_CAST(v);
@@ -96,6 +92,8 @@ lobj_t * new_err(char * fmt, ...) {
 
 prim_t * mk_prim(proc_t body, int arity) {
   prim_t * fun = malloc(sizeof(prim_t));
+  fun->type = LOBJ_PRIM;
+  fun->tag = GC_WHITE;
   fun->arity = arity;
   fun->body = body;
 
@@ -111,20 +109,32 @@ lobj_t * new_prim(proc_t body, int arity) {
 }
 
 
-lambda_t * mk_proc(proc_t body, sym_t * env, int arity) {
+lambda_t * mk_proc(lobj_t * formals, lobj_t * body, sym_t * parent) {
   lambda_t * fun = malloc(sizeof(lambda_t));
   fun->type = LOBJ_PROC;
   fun->tag = GC_WHITE;
+  fun->formals = formals;
   fun->body = body;
-  fun->env = env;
-  fun->arity = arity;
+  sym_t * locals = NULL;
+
+  // Create bindings for formals in env. These are bound every time the function
+  // Is called.
+  for (; !isnil(formals); formals = cdr(formals)) {
+    intern(tosym(car(formals)), locals, NULL);
+  }
+
+  fun->env = locals;
+  fun->env->parent = parent;
+  
+  LINK(LOBJ_CAST(locals));
+
   fun->quote = 0;
 
   return fun;
 }
 
-lobj_t * new_proc(proc_t body, sym_t * env, int arity) {
-  lobj_t * out = LOBJ_CAST(mk_proc(body, env, arity));
+lobj_t * new_proc(lobj_t * formals, lobj_t * body, sym_t * parent) {
+  lobj_t * out = LOBJ_CAST(mk_proc(formals, body, parent));
   LINK(out);
 
   return out;
@@ -144,6 +154,7 @@ SAFECAST_OP(num_t*, num, "num")
 SAFECAST_OP(err_t*, err, "err")
 SAFECAST_OP(sym_t*, sym, "sym")
 SAFECAST_OP(lambda_t*, proc, "proc")
+SAFECAST_OP(prim_t*, prim, "prim")
 
 // Deep copy operation
 // Carefully consider whether copying an object means copying an environment!
@@ -165,10 +176,11 @@ SAFECAST_OP(lambda_t*, proc, "proc")
       break;
     }case LOBJ_PROC:{
        lambda_t * proc = toproc(obj);
-       lambda_t * out_proc = mk_proc(proc->body, tosym(lobj_copy(LOBJ_CAST(proc->env))), proc->arity);
+       lambda_t * out_proc = mk_proc(proc->formals, proc->body, proc->env->parent);
        out = LOBJ_CAST(out_proc);
        break;
-     }case LOBJ_CONS: return new_cons(lobj_copy(car(obj)), lobj_copy(cdr(obj)));
+     }case LOBJ_PRIM: return obj;
+      case LOBJ_CONS: return new_cons(lobj_copy(car(obj)), lobj_copy(cdr(obj)));
      }
 
     LINK(out);
@@ -195,31 +207,53 @@ lobj_t * unquote(lobj_t * obj) {
 }
 
 // Helpers for working with symbols.
-void intern(sym_t * new, sym_t * env, lobj_t * value) {
-  new->binding = value;
-  sym_t * prev, * curr = env;
-  int cmp, isleft = 0;
 
-  while (curr) {
-    cmp = fcmpsym(new, curr);
+sym_t ** assoc(char * s, sym_t ** env) {
+  sym_t ** curr = env;
+  int cmp;
+
+ while (*curr && (cmp = fcmpstrsym(s, *curr))) {
     if (cmp < 0) {
-      prev = curr;
-      curr = curr->left;
-      isleft = 1;
-    } else if (cmp > 0) {
-      prev = curr;
-      curr = curr->right;
-      isleft = 0;
+      curr = &(*curr)->left;
     } else {
-      return;
+      curr = &(*curr)->right;
     }
   }
 
-  if (isleft) {
-    prev->left = new;
-  } else {
-    prev->right = new;
+  return curr;  
+}
+
+
+void intern(sym_t * new, sym_t * env, lobj_t * value) {
+  new->binding = value;
+  sym_t * prev, * curr = env;
+  int cmp, isleft;
+
+  while (curr && (cmp = fcmpsym(new, curr))) {
+    prev = curr;
+    if (cmp < 0) {
+      isleft = 1;
+      prev = curr;
+      curr = curr->left;
+    } else if (cmp > 0) {
+      isleft = 0;
+      prev = curr;
+      curr = curr->right;
+    } else return;
   }
+
+  if (isleft) prev->left = new;
+  else prev->right = new;
+}
+
+void update(sym_t * new, sym_t * env, lobj_t * value) {
+  sym_t ** table = &env;
+  sym_t ** result = assoc(new->name, table);
+
+  if (isnil(*result)) return;
+
+  (*result)->binding = value;
+  
 }
 
 lobj_t * lookup(sym_t * s, sym_t * env, lobj_t * defaultval) {
@@ -235,27 +269,10 @@ lobj_t * lookup(sym_t * s, sym_t * env, lobj_t * defaultval) {
   }
 
   if (curr == NULL) {
-    return (defaultval ? defaultval : UNBOUND);
+    if (env->parent == NULL) return (defaultval ? defaultval : UNBOUND);
+    // Try to find the variable in the parent environment
+    return lookup(s, env->parent, defaultval);
   } else { return curr->binding; }
-}
-
-lobj_t * assoc(char * s, sym_t * env) {
-  sym_t * curr = env;
-  int cmp;
-
- while (curr && (cmp = fcmpstrsym(s, curr))) {
-    if (cmp < 0) {
-      curr = curr->left;
-    } else {
-      curr = curr->right;
-    }
-  }
-
-  if (curr == NULL) {
-    return UNBOUND;
-  }
-
-  return LOBJ_CAST(curr);  
 }
 
 // Primitive operations and functions
@@ -329,9 +346,9 @@ lobj_t * prim_setq(lobj_t * args[3]) {
   lobj_t * value = args[1];
   sym_t * env = tosym(args[2]);
 
-  lobj_t * result = assoc(name->name, env);
+  sym_t * result = *assoc(name->name, &env);
   LASSERT(!isunbound(result), "Unbound symbol %s\n", name->name)
-  tosym(result)->binding = value;
+  result->binding = value;
   return value;
 }
 
@@ -340,8 +357,8 @@ lobj_t * prim_eval(lobj_t * args[2]) {
   return lobj_eval(args[0], tosym(args[1]));
 }
 
-lobj_t * prim_apply(lobj_t * args[2]) {
-  return apply(toproc(args[0]), args[1]);
+lobj_t * prim_apply(lobj_t * args[3]) {
+  return apply(args[0], tosym(args[1]), args[2]);
 }
 
 lobj_t * prim_globals(lobj_t ** args) {
@@ -352,4 +369,9 @@ lobj_t * prim_globals(lobj_t ** args) {
 lobj_t * prim_allocations(lobj_t ** args) {
   printf("%i Allocations\n", ALLOCATIONS);
   return NIL;
+}
+
+
+lobj_t * prim_fn(lobj_t * args[3]) {
+  return new_proc(args[0], args[1], tosym(args[2]));
 }

@@ -15,7 +15,7 @@ void lobj_println(lobj_t *);
 // Debug
 void show_node(mpc_ast_t *, int);
 void show_tree(mpc_ast_t *, int);
-void show_proc_info(lambda_t *);
+void show_proc_info(prim_t *);
 void show_alloc_list();
 
 #endif
