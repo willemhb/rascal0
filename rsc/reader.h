@@ -4,12 +4,14 @@
 #include "object.h"
 #include "eval.h"
 
-#define SYMBOL_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+-*\\/=<>!&?"
+#define SYMBOL_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+-*\\/%=<>!&?"
 #define NUMBER_CHARS "-0123456789"
 #define CONS_CHARS   "()[]"
 #define SPACE_CHARS  " \t\v\r\n"
+// #define ESCAPABLE    "\a\b\f\n\r\t\v\\\'\""
+// #define UNESCAPABLE  "abfnrtv\\\'\""
 
-enum { TOK_NONE, TOK_OPEN, TOK_CLOSE, TOK_SYM, TOK_NUM, TOK_ERROR, TOK_QUOTE };
+enum { TOK_NONE, TOK_OPEN, TOK_CLOSE, TOK_STR, TOK_SYM, TOK_NUM, TOK_ERROR, TOK_QUOTE, TOK_UNQUOTE };
 static uint32_t TOKTYPE = TOK_NONE;
 static lobj_t * TOKVAL;
 static char READ_BUFFER[2048];
@@ -23,6 +25,8 @@ int read_token(FILE *, char);
 uint32_t peek(FILE *);
 lobj_t * read_list(FILE *);
 lobj_t * read_expr(FILE *);
+lobj_t * read_str(FILE *);
+lobj_t * load_lisp_file(char *, lobj_t **);
 
 // Helper macros for testing string characters
 #define isnumc(c)   (strchr(NUMBER_CHARS, c))

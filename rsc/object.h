@@ -54,14 +54,12 @@ typedef struct _err_t{
 
 typedef struct _cons_t {
   LOBJ_HEAD
-  // Fields are car and cdr
   lobj_t * _car;
   lobj_t * _cdr;
 } cons_t;
 
 typedef struct _sym_t {
   LOBJ_HEAD
-  // Fields are binding, parent, left, and right.
   char * name;
 } sym_t;
 
@@ -89,13 +87,20 @@ typedef struct _prim_t {
  proc_t body;
 } prim_t;
 
+// Forms are structurally identical to primitives but have special evaluation
+// rules handled in the bodies of the procedures they're bound to.
+typedef struct _form_t {
+ LOBJ_HEAD
+ int argc;
+  proc_t body;
+} form_t;
+
 typedef struct _lambda_t {
 
   LOBJ_HEAD
-  // Fields are formals, env, and body.
   lobj_t * formals;
   lobj_t * body;
-  lobj_t * env;
+  lobj_t ** env;
     } lambda_t;
 
 // Type/nil checking macros
@@ -104,6 +109,7 @@ typedef struct _lambda_t {
 #define issym(obj)     ((obj)->type == LOBJ_SYM)
 #define iserr(obj)     ((obj)->type == LOBJ_ERR)
 #define isprim(obj)    ((obj)->type == LOBJ_PRIM)
+#define isform(obj)    ((obj)->type == LOBJ_FORM)
 #define isproc(obj)    ((obj)->type == LOBJ_PROC)
 #define isstring(obj)  ((obj)->type == LOBJ_STR)
 #define isnil(obj)     ((uint64_t)(obj)==(uint64_t)NIL)
@@ -123,8 +129,10 @@ str_t * mk_str(char *);
 lobj_t * new_str(char *);
 prim_t * mk_prim(proc_t, int);
 lobj_t * new_prim(proc_t, int);
-lambda_t * mk_proc(lobj_t *, lobj_t *, lobj_t *);
-lobj_t * new_proc(lobj_t *, lobj_t *, lobj_t *);
+form_t * mk_form(proc_t, int);
+lobj_t * new_form(proc_t, int);
+lambda_t * mk_proc(lobj_t *, lobj_t *, lobj_t **);
+lobj_t * new_proc(lobj_t *, lobj_t *, lobj_t **);
 
 // Safecast operators
 cons_t * tocons(lobj_t *);
@@ -134,6 +142,7 @@ sym_t * tosym(lobj_t *);
 str_t * tostring(lobj_t *);
 prim_t * toprim(lobj_t *);
 lambda_t * toproc(lobj_t *);
+form_t * toform(lobj_t *);
 
 // Helpers & primitives
 lobj_t * lobj_copy(lobj_t *);
@@ -149,6 +158,7 @@ lobj_t * prim_sub(lobj_t * args[2], lobj_t **);
 lobj_t * prim_mul(lobj_t * args[2], lobj_t **);
 lobj_t * prim_div(lobj_t * args[2], lobj_t **);
 lobj_t * prim_mod(lobj_t * args[2], lobj_t **);
+lobj_t * prim_pow(lobj_t * args[2], lobj_t **);
 lobj_t * prim_cons(lobj_t * args[2], lobj_t **);
 lobj_t * prim_head(lobj_t * args[1], lobj_t **);
 lobj_t * prim_tail(lobj_t * args[1], lobj_t **);
@@ -156,7 +166,7 @@ lobj_t * prim_eval(lobj_t * args[2], lobj_t **);
 lobj_t * prim_apply(lobj_t * args[3], lobj_t **);
 lobj_t * prim_globals(lobj_t ** args, lobj_t **);
 lobj_t * prim_allocations(lobj_t ** args, lobj_t **);
-// lobj_t * prim_print(lobj_t * args[1]);
+lobj_t * prim_print(lobj_t * args[1], lobj_t **);
 lobj_t * form_def(lobj_t * args[2], lobj_t **);
 lobj_t * form_setq(lobj_t * args[2], lobj_t **);
 lobj_t * form_quote(lobj_t * args[1], lobj_t **);

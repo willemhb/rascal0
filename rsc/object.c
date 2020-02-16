@@ -35,6 +35,22 @@ lobj_t * new_sym(char * name) {
   return out;
 }
 
+str_t * mk_str(char * value) {
+  str_t * s = malloc(sizeof(str_t));
+  s->type = LOBJ_STR;
+  s->tag = GC_WHITE;
+  str_init(s->value, value);
+
+  return s;
+}
+
+lobj_t * new_str(char * value) {
+  lobj_t * out = LOBJ_CAST(mk_str(value));
+  LINK(out);
+
+  return out;
+}
+
 num_t * mk_num(long value) {
   num_t * n = malloc(sizeof(num_t));
   n->tag = GC_WHITE;
@@ -100,25 +116,39 @@ lobj_t * new_prim(proc_t body, int argc) {
   return fun;
 }
 
-lambda_t * mk_proc(lobj_t * formals, lobj_t * body, lobj_t * parent) {
+
+
+form_t * mk_form(proc_t body, int argc) {
+  form_t * fun = malloc(sizeof(form_t));
+  fun->type = LOBJ_FORM;
+  fun->tag = GC_WHITE;
+  fun->argc = argc;
+  fun->body = body;
+
+  return fun;
+}
+
+lobj_t * new_form(proc_t body, int argc) {
+  lobj_t * form = LOBJ_CAST(mk_form(body, argc));
+  LINK(form);
+
+  return form;
+}
+
+
+
+lambda_t * mk_proc(lobj_t * formals, lobj_t * body, lobj_t ** parent) {
   lambda_t * fun = malloc(sizeof(lambda_t));
   fun->type = LOBJ_PROC;
   fun->tag = GC_WHITE;
   fun->formals = formals;
   fun->body = body;
-  lobj_t * locals = parent;
-
-  // Create bindings for formals in env. These are bound every time the function
-  // Is called.
-  for (; !isnil(formals); formals = cdr(formals)) {
-    locals = intern(car(formals), &locals, UNBOUND);
-  }
-  fun->env = locals;
+  fun->env = parent;
 
   return fun;
 }
 
-lobj_t * new_proc(lobj_t * formals, lobj_t * body, lobj_t * parent) {
+lobj_t * new_proc(lobj_t * formals, lobj_t * body, lobj_t ** parent) {
   lobj_t * out = LOBJ_CAST(mk_proc(formals, body, parent));
   LINK(out);
 
@@ -140,6 +170,8 @@ SAFECAST_OP(err_t*, err, "err")
 SAFECAST_OP(sym_t*, sym, "sym")
 SAFECAST_OP(lambda_t*, proc, "proc")
 SAFECAST_OP(prim_t*, prim, "prim")
+SAFECAST_OP(form_t*, form, "form")
+SAFECAST_OP(str_t*, string, "string")
 
 // Deep copy operation
 // Carefully consider whether copying an object means copying an environment!
@@ -151,12 +183,14 @@ SAFECAST_OP(prim_t*, prim, "prim")
     case LOBJ_NUM: return new_num(tonum(obj)->value);
     case LOBJ_ERR: return new_err(toerr(obj)->msg);
     case LOBJ_SYM: return new_sym(tosym(obj)->name);
+    case LOBJ_STR: return new_str(tostring(obj)->value);
     case LOBJ_PROC:{
        lambda_t * proc = toproc(obj);
        lambda_t * out_proc = mk_proc(lobj_copy(proc->formals), lobj_copy(proc->body), proc->env);
        out = LOBJ_CAST(out_proc);
        break;
-     }case LOBJ_PRIM: return obj;
+     }case LOBJ_FORM:
+      case LOBJ_PRIM: return obj;
       case LOBJ_CONS: return new_cons(lobj_copy(car(obj)), lobj_copy(cdr(obj)));
     } 
 
@@ -217,7 +251,9 @@ void puts_env(lobj_t * key, lobj_t ** env, lobj_t * binding) {
   while (!isnil(*curr)) {
     cmp = cmpsym(key, car(car(*curr)));
 
-    if (cmp >= 0) break;
+    if (cmp == 0) return;
+    
+    if (cmp > 0) break;
 
     prev = curr;
     curr = &cdr(*curr);
@@ -242,17 +278,6 @@ lobj_t * prim_add(lobj_t * args[2], lobj_t ** env) {
   return new_num(x->value + y->value);
 }
 
-lobj_t * prim_len(lobj_t * list[1], lobj_t ** env) {
-  int out = 0;
-  lobj_t * xs = lobj_eval(list[0], env);
-  for (; !isnil(xs); xs = cdr(xs)) {
-    out++;
-  }
-  
-  return new_num(out);
-}
-
-
 lobj_t * prim_eq(lobj_t * args[2], lobj_t ** env) {
   lobj_t * x = lobj_eval(args[0], env);
   lobj_t * y = lobj_eval(args[1], env);
@@ -274,7 +299,6 @@ lobj_t * prim_eq(lobj_t * args[2], lobj_t ** env) {
 
   return out;
 }
-
 
 lobj_t * prim_sub(lobj_t * args[2], lobj_t ** env) {
   num_t * x = tonum(lobj_eval(args[0], env));
@@ -305,6 +329,26 @@ lobj_t * prim_mod(lobj_t * args[2], lobj_t ** env) {
   LASSERT(y->value != 0, "Modulo by Zero Error.")
 
   return new_num(x->value % y->value);
+}
+
+lobj_t * prim_pow(lobj_t * args[2], lobj_t ** env) {
+  long x = tonum(lobj_eval(args[0], env))->value;
+  long y = tonum(lobj_eval(args[1], env))->value;
+
+  long acc = 1;
+
+  while (y) {
+    if (y % 2) {
+      y -= 1;
+      acc *= x;
+    } else {
+      y >>= 1;
+      x *= x;
+    }
+  }
+
+  return new_num(acc);
+  
 }
 
 lobj_t * prim_cons(lobj_t * args[2], lobj_t ** env) {
@@ -340,10 +384,11 @@ lobj_t * prim_allocations(lobj_t ** args, lobj_t ** env) {
   return NIL;
 }
 
-/* lobj_t * prim_print(lobj_t * args[1]) {
+lobj_t * prim_print(lobj_t * args[1], lobj_t ** env) {
   lobj_println(args[0]);
   return NIL;
-} */
+
+}
 
 // Special forms
 lobj_t * form_def(lobj_t * args[2], lobj_t ** env) {
@@ -365,7 +410,9 @@ lobj_t * form_setq(lobj_t * args[2], lobj_t ** env) {
 
 
 lobj_t * form_quote(lobj_t * args[1], lobj_t ** env) {
-  return args[0];
+  lobj_t * out = args[0];
+
+  return lobj_qeval(out, env);
 }
 
 
@@ -380,12 +427,12 @@ lobj_t * form_if(lobj_t * args[3], lobj_t ** env) {
 
 
 lobj_t * form_fn(lobj_t * args[2], lobj_t ** env) {
-  return new_proc(args[0], args[1], *env);
+  return new_proc(args[0], args[1], env);
 }
 
 
 lobj_t * form_do(lobj_t * args[1], lobj_t ** env) {
-  lobj_t * out = lobj_eval(args[0], env);
+  lobj_t * out = NIL;
 
   for (lobj_t * body = args[0]; !isnil(body); body = cdr(body)) {
     out = lobj_eval(car(body), env);

@@ -23,6 +23,7 @@ typedef struct _str_t str_t;
 // array of arguments to be passed to the procedure.
 typedef lobj_t * (*proc_t) (lobj_t**, lobj_t**);
 typedef struct _prim_t prim_t;
+typedef struct _form_t form_t;
 typedef struct _lambda_t lambda_t;
 
 /* Global variables  */
@@ -51,7 +52,7 @@ lobj_t * UNBOUND;
 lobj_t * TRUE;
 int ALLOCATIONS;
 // Arbitrary allocation limit (should research a good one)
-#define ALLOCATIONS_LIMIT 2048
+#define ALLOCATIONS_LIMIT 256
 // Read buffer
 char BUFFER[2048];
 // Add an object to the linked list of allocated objects.

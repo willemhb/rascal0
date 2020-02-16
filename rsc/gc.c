@@ -11,6 +11,11 @@ void lobj_del(lobj_t * obj) {
     free(body->name);
     free(body);
     break;
+  }case LOBJ_STR:{
+     str_t * body = tostring(obj);
+     free(body->value);
+     free(body);
+     break;
    }case LOBJ_PROC:{
       lambda_t * pbody = toproc(obj);
       free(pbody);
@@ -46,6 +51,7 @@ void mark(lobj_t * obj) {
   case LOBJ_NUM:
   case LOBJ_ERR:
   case LOBJ_SYM:
+  case LOBJ_STR:
   case LOBJ_PRIM:
   case LOBJ_FORM:
     break;
@@ -81,7 +87,7 @@ void sweep() {
   }
 
   void gc() {
-    mark(LOBJ_CAST(GLOBALS));
+    mark(GLOBALS);
     mark(ROOT);
     sweep();
   }

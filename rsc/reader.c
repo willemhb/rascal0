@@ -68,6 +68,10 @@ uint32_t peek(FILE * f) {
 
     if (c == ':') TOKTYPE = TOK_QUOTE;
 
+    if (c == '$') TOKTYPE = TOK_UNQUOTE; 
+
+    if (c == '"') TOKTYPE = TOK_STR;
+    
     if (issymc(c)) {
         read_token(f, c);
 	
@@ -100,7 +104,7 @@ lobj_t * read_list(FILE *f) {
   uint32_t t = peek(f);
   
   while (t != TOK_CLOSE) {
-    LASSERT(!feof(f), "read: error: unexpected end of input.")
+    LASSERT(!feof(f), "read error: unexpected end of input.")
     *curr = new_cons(NIL, NIL);
     setcar(*curr, read_expr(f));
     curr = &cdr(*curr);    
@@ -110,7 +114,23 @@ lobj_t * read_list(FILE *f) {
     return out;
 }
 
+lobj_t * read_str(FILE *f) {
+  int i = 0, c;
+  char ch = fgetc(f);
+
+    while (ch != '"') {
+      LASSERT(ch != EOF, "Unexpected EOF in string literal.")
+      c = (char)ch;
+      accumchar(c, &i);
+      ch = fgetc(f);
+    }
+ 
+ READ_BUFFER[i++] = '\0';
+ return new_str(READ_BUFFER); 
+}
+
 lobj_t * read_expr(FILE *f) {
+  if (feof(f)) return NIL;
     switch (peek(f)) {
     case TOK_CLOSE:
         take();
@@ -119,13 +139,37 @@ lobj_t * read_expr(FILE *f) {
       take();
       return new_cons(new_sym("quote"), new_cons(read_expr(f), NIL));
     }
+    case TOK_UNQUOTE:{
+      take();
+      return new_cons(new_sym("unquote"), new_cons(read_expr(f), NIL));
+    } 
     case TOK_SYM:
     case TOK_NUM:
         take();
         return TOKVAL;
-    case TOK_OPEN:
+    case TOK_OPEN:{
         take();
         return read_list(f);
+    }case TOK_STR:{
+       take();
+       return read_str(f);
+     }
     }
+
     return NIL;
+}
+
+
+lobj_t * load_lisp_file(char * fname, lobj_t ** env) {
+  lobj_t * e, * v = NIL;
+  LASSERT(strstr(fname, ".rsp"), "Invalid filename")
+  FILE * f = fopen(fname, "r");
+  LASSERT(f != NULL, "File not found.")  
+    while (1) {
+      e = read_expr(f);
+      if (feof(f)) break;
+      v = lobj_eval(e, env);
+    }
+    fclose(f);
+    return v; 
 }

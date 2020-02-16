@@ -1,0 +1,15 @@
+; Beginning of standard library
+(do [(def inc  (fn [x] (+ x 1)))
+
+     (def dec  (fn [x] (- x 1)))
+
+     (def nil? (fn [xs] (eq? xs nil)))
+
+     (def len  (fn [xs] (if (nil? xs)
+                            0
+			    (+ 1 (len (tail xs))))))
+
+     (def last (fn [xs] (if (nil? (tail xs))
+                            (head xs)
+			    (last (tail xs)))))])
+; End of standard library
