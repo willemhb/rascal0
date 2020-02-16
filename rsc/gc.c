@@ -26,12 +26,7 @@ void lobj_del(lobj_t * obj) {
     cons_t * body = tocons(obj);
     free(body);
     break;
-    }case LOBJ_FORM:{
-     form_t * f = toform(obj);
-     free(f->body);
-     free(f);
-     break;
-     }
+    }
   }
 
   ALLOCATIONS--;

@@ -47,12 +47,12 @@ void initialize_lisp() {
   puts_env(new_sym("globals"), &GLOBALS, new_prim(prim_globals, 0));
   puts_env(new_sym("allocations"), &GLOBALS, new_prim(prim_allocations, 0));
   //  puts_env(new_sym("print"), &GLOBALS, new_prim(prim_print, 1));
-  puts_env(new_sym("def"), &GLOBALS, new_form(form_def, 3));
-  puts_env(new_sym("setq"), &GLOBALS, new_form(form_setq, 3));
-  puts_env(new_sym("quote"), &GLOBALS, new_form(form_quote, 2));
-  puts_env(new_sym("if"), &GLOBALS, new_form(form_if, 4));
-  puts_env(new_sym("fn"), &GLOBALS, new_form(form_fn, 3));
-  puts_env(new_sym("do"), &GLOBALS, new_form(form_do, 2));
+  puts_env(new_sym("def"), &GLOBALS, new_prim(form_def, 2));
+  puts_env(new_sym("setq"), &GLOBALS, new_prim(form_setq, 2));
+  puts_env(new_sym("quote"), &GLOBALS, new_prim(form_quote, 1));
+  puts_env(new_sym("if"), &GLOBALS, new_prim(form_if, 3));
+  puts_env(new_sym("fn"), &GLOBALS, new_prim(form_fn, 2));
+  puts_env(new_sym("do"), &GLOBALS, new_prim(form_do, 1));
 
   lobj_println(GLOBALS);
   return;

@@ -167,32 +167,32 @@ SAFECAST_OP(prim_t*, prim, "prim")
 // due to ease of implementation and debugging. This will be upgraded once a stable version
 // of the language exists.
 
-lobj_t * assoc(lobj_t * value, lobj_t * env) {
+lobj_t * assoc(lobj_t * value, lobj_t ** env) {
   if (isnil(env)) return UNBOUND;
 
-  int cmp = cmpsym(value, car(car(env)));
+  int cmp = cmpsym(value, car(car(*env)));
 
-  if (cmp < 0) return assoc(value, cdr(env));
+  if (cmp < 0) return assoc(value, &(cdr(*env)));
 
   if (cmp > 0) return UNBOUND;
   
-  return car(env);  
+  return car(*env);  
 }
 
 
-lobj_t * intern(lobj_t * new, lobj_t * env, lobj_t * value) {
-  if (isnil(env)) return new_cons(new_cons(new, value), env);
+lobj_t * intern(lobj_t * new, lobj_t ** env, lobj_t * value) {
+  if (isnil(env)) return new_cons(new_cons(new, value), *env);
 
-  int cmp = cmpsym(new, car(car(env)));
+  int cmp = cmpsym(new, car(car(*env)));
 
-  if (cmp < 0) return new_cons(car(env), intern(new, cdr(env), value));
+  if (cmp < 0) return new_cons(car(*env), intern(new, &(cdr(*env)), value));
 
-  return new_cons(new_cons(new, value), env);
+  return new_cons(new_cons(new, value), *env);
   
 }
 
 void update(lobj_t * key, lobj_t ** env, lobj_t * value) {
-  lobj_t * pair = assoc(key, *env);
+  lobj_t * pair = assoc(key, env);
 
   if (isunbound(pair)) return;
 
@@ -200,7 +200,7 @@ void update(lobj_t * key, lobj_t ** env, lobj_t * value) {
 }
 
 lobj_t * lookup(lobj_t * sym, lobj_t ** env) {
-  lobj_t * pair = assoc(sym, *env);
+  lobj_t * pair = assoc(sym, env);
   if (isunbound(pair)) return UNBOUND;
 
   return cdr(pair);
