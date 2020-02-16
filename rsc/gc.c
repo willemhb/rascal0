@@ -26,7 +26,12 @@ void lobj_del(lobj_t * obj) {
     cons_t * body = tocons(obj);
     free(body);
     break;
-    }
+    }case LOBJ_FORM:{
+     form_t * f = toform(obj);
+     free(f->body);
+     free(f);
+     break;
+     }
   }
 
   ALLOCATIONS--;
@@ -45,25 +50,22 @@ void mark(lobj_t * obj) {
     // Case 1: atomic objects (no references)
   case LOBJ_NUM:
   case LOBJ_ERR:
+  case LOBJ_SYM:
+  case LOBJ_PRIM:
+  case LOBJ_FORM:
     break;
     // Case 2: pairs
   case LOBJ_CONS:{
     mark(fcar(obj));
     mark(fcdr(obj));
     break;
-    // Case 3: environments
-  }case LOBJ_SYM:{
-     sym_t * env = tosym(obj);
-     mark(env->binding);
-     mark(LOBJ_CAST(env->left));
-     mark(LOBJ_CAST(env->right));
-     break;
      // Case 4: procedures
    }case LOBJ_PROC:{
       lambda_t * lmb = toproc(obj);
       mark(LOBJ_CAST(lmb->env));
+      mark(LOBJ_CAST(lmb->body));
       break;
-    }
+     }
   }
 }
 

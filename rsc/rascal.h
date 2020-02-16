@@ -12,21 +12,22 @@
 #include <errno.h>
 #include <stdint.h>
 
-#include "mpc.h"
-
 // Forward type declarations
 typedef struct _lobj_t lobj_t;
 typedef struct _err_t err_t;
 typedef struct _num_t num_t;
 typedef struct _sym_t sym_t;
 typedef struct _cons_t cons_t;
-typedef lobj_t * (*proc_t) (lobj_t**);
+typedef struct _str_t str_t;
+// First argument should be a pointer to an environment, the second should be an
+// array of arguments to be passed to the procedure.
+typedef lobj_t * (*proc_t) (lobj_t**, lobj_t**);
 typedef struct _prim_t prim_t;
 typedef struct _lambda_t lambda_t;
 
 /* Global variables  */
 // Memory and stack management, environment
-sym_t * GLOBALS;
+lobj_t * GLOBALS;
 // Head of the list of all allocated objects
 lobj_t * ALLOC;
 // Head of all reachable objects
@@ -39,15 +40,18 @@ For now Nil is a unique symbol created when the interpreter is initialized.
 Its address is recorded and used to check for nil, and it is stored in a global variable
 for easy access. This system is clumsy but easier and less error prone for now than the
 current implementation (all references to nil lookup nil in the global environment).
-This is a target for  optimization once the interpreter is fleshed out and working pretty well.
+This is a target for  optimization once the interpreter is fleshed out and working reliably.
 */
 // Reference to unique NIL object
 lobj_t * NIL;
 // Reference to unique UNBOUND object for unbound symbols
 lobj_t * UNBOUND;
+// Unique reference to TRUE object used as return value from
+// boolean functions
+lobj_t * TRUE;
 int ALLOCATIONS;
 // Arbitrary allocation limit (should research a good one)
-#define ALLOCATIONS_LIMIT 128
+#define ALLOCATIONS_LIMIT 2048
 // Read buffer
 char BUFFER[2048];
 // Add an object to the linked list of allocated objects.
