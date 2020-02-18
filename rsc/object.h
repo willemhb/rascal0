@@ -27,7 +27,13 @@ of a tricolor collector. GC_WHITE objects will be collected when
 the garbage collector is run. GC_BLACK objects are protected from
 collection.
  */
-enum { GC_WHITE, GC_GREY, GC_BLACK }; 
+enum { GC_WHITE, GC_GREY, GC_BLACK };
+
+/*
+Eval type tags. Define when and how a procedural form is evaluated. 
+*/
+enum { EVAL_PROC, EVAL_FORM, EVAL_MACRO };
+
 /*
   The generic LOBJ_HEAD macro adds type and GC information to the front of every object
  */
@@ -35,6 +41,12 @@ enum { GC_WHITE, GC_GREY, GC_BLACK };
   int type;       \
   int tag;        \
   lobj_t * next;  
+
+#define LOBJ_PROC_HEAD \
+  LOBJ_HEAD            \
+  int argc;            \
+  int vararg;          \
+  int evaltype;
 
 typedef struct _lobj_t {
   LOBJ_HEAD
@@ -82,22 +94,13 @@ arguments can be handled in the body of their corresponding procedures
 */
 
 typedef struct _prim_t {
- LOBJ_HEAD
- int argc;
+ LOBJ_PROC_HEAD
  proc_t body;
 } prim_t;
 
-// Forms are structurally identical to primitives but have special evaluation
-// rules handled in the bodies of the procedures they're bound to.
-typedef struct _form_t {
- LOBJ_HEAD
- int argc;
-  proc_t body;
-} form_t;
-
 typedef struct _lambda_t {
 
-  LOBJ_HEAD
+  LOBJ_PROC_HEAD
   lobj_t * formals;
   lobj_t * body;
   lobj_t ** env;
@@ -109,11 +112,12 @@ typedef struct _lambda_t {
 #define issym(obj)     ((obj)->type == LOBJ_SYM)
 #define iserr(obj)     ((obj)->type == LOBJ_ERR)
 #define isprim(obj)    ((obj)->type == LOBJ_PRIM)
-#define isform(obj)    ((obj)->type == LOBJ_FORM)
 #define isproc(obj)    ((obj)->type == LOBJ_PROC)
 #define isstring(obj)  ((obj)->type == LOBJ_STR)
 #define isnil(obj)     ((uint64_t)(obj)==(uint64_t)NIL)
 #define isunbound(obj) ((uint64_t)(obj)==(uint64_t)UNBOUND)
+#define ismacro(obj)   \
+  ((isprim(obj) && (toprim(obj))->evaltype == EVAL_MACRO) || (isproc(obj) && (toproc(obj))->evaltype == EVAL_MACRO))
 
 /* Forward declarations */
 // Type constructors
@@ -127,12 +131,10 @@ sym_t * mk_sym(char *);
 lobj_t * new_sym(char *);
 str_t * mk_str(char *);
 lobj_t * new_str(char *);
-prim_t * mk_prim(proc_t, int);
-lobj_t * new_prim(proc_t, int);
-form_t * mk_form(proc_t, int);
-lobj_t * new_form(proc_t, int);
-lambda_t * mk_proc(lobj_t *, lobj_t *, lobj_t **);
-lobj_t * new_proc(lobj_t *, lobj_t *, lobj_t **);
+prim_t * mk_prim(proc_t, int, int, int);
+lobj_t * new_prim(proc_t, int, int, int);
+lambda_t * mk_proc(lobj_t *, lobj_t *, lobj_t **, int, int);
+lobj_t * new_proc(lobj_t *, lobj_t *, lobj_t **, int, int);
 
 // Safecast operators
 cons_t * tocons(lobj_t *);
@@ -142,7 +144,6 @@ sym_t * tosym(lobj_t *);
 str_t * tostring(lobj_t *);
 prim_t * toprim(lobj_t *);
 lambda_t * toproc(lobj_t *);
-form_t * toform(lobj_t *);
 
 // Helpers & primitives
 lobj_t * lobj_copy(lobj_t *);
@@ -151,7 +152,6 @@ lobj_t * assoc(lobj_t *, lobj_t **);
 lobj_t * intern(lobj_t *, lobj_t **, lobj_t *);
 void update(lobj_t *, lobj_t **, lobj_t *);
 void puts_env(lobj_t *, lobj_t **, lobj_t *);
-lobj_t * prim_len(lobj_t * args[1], lobj_t **);
 lobj_t * prim_eq(lobj_t * args[2], lobj_t **);
 lobj_t * prim_add(lobj_t * args[2], lobj_t **);
 lobj_t * prim_sub(lobj_t * args[2], lobj_t **);
@@ -173,6 +173,7 @@ lobj_t * form_quote(lobj_t * args[1], lobj_t **);
 lobj_t * form_if(lobj_t * args[3], lobj_t **);
 lobj_t * form_fn(lobj_t * args[2], lobj_t **);
 lobj_t * form_do(lobj_t * args[1], lobj_t **);
+lobj_t * form_unquote(lobj_t * args[1], lobj_t **);
 
 /* Macros */
 #define LASSERT(cond, fmt, ...)                     \
@@ -197,8 +198,10 @@ lobj_t * form_do(lobj_t * args[1], lobj_t **);
 #define cmpsym(sym1, sym2)   (strcmp(tosym(sym1)->name, tosym(sym2)->name))
 #define cmpstrsym(str, sym)  (strcmp((str), tosym(sym)->name))
 #define cmpsymstr(sym, str)  (strcmp(tosym(sym)->name, (str)))
+#define symnameq(sym, str)   (strcmp(tosym(sym)->name, (str)) == 0)
 #define fcmpsym(sym1, sym2)  (strcmp(((sym_t*)(sym1))->name, ((sym_t*)(sym2))->name))
 #define fcmpstrsym(str, sym) (strcmp((str), ((sym_t*)(sym))->name))
 #define fcmpsymstr(sym, str) (strcmp(((sym_t*)(sym))->name, str))
+#define fsymnameq(sym, str)  (strcmp(((sym_t*)(sym))->name, str) == 0)
 
 #endif

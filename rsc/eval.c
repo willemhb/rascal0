@@ -1,92 +1,7 @@
 #include "eval.h"
-#include "printer.h"
-
-lobj_t * lobj_eval(lobj_t * v, lobj_t ** env) {
-  lobj_t * out = v;
-
-  if (isnil(out) || isunbound(out)) return out;
-
- switch (out->type) {
-  case LOBJ_NUM:
-  case LOBJ_ERR:
-  case LOBJ_PROC:
-  case LOBJ_PRIM:
-  case LOBJ_STR:
-    break;
-  case LOBJ_SYM: {
-    out = lookup(out, env);
-    break;
-  }
-  case LOBJ_CONS:{
-    // Call recursively on car and cdr.
-     lobj_t * head = lobj_eval(car(out), env);
-     lobj_t * tail = cdr(out);
-
-     if (isform(head)) { out = apply(head, env, tail); break; }
-
-     tail = lobj_eval(tail, env);
-  
-     if (isproc(head) || isprim(head)) {
-       out = apply(head, env, tail);
-     } else {
-       out = new_cons(head, tail);
-     }
-     break;
-   }
-  }
-  
-  return out;
-}
 
 
-
-lobj_t * lobj_qeval(lobj_t * v, lobj_t ** env) {
-  lobj_t * out = v;
-  
-  if (isnil(v) || isunbound(v)) return out;
-
- switch (v->type) {
-  case LOBJ_NUM:
-  case LOBJ_ERR:
-  case LOBJ_PROC:
-  case LOBJ_PRIM:
-  case LOBJ_STR:
-    break;
-  case LOBJ_SYM: {
-    out = cmpstrsym("unquote", v) ? lookup(v, env) : v;
-    break;
- }
-  case LOBJ_CONS:{
-    // Call recursively on car and cdr.
-    lobj_t * head = lobj_qeval(car(v), env);
-    lobj_t * tail = lobj_qeval(cdr(v), env);
-
-    if (isform(head)) {
-      out = apply(head, env, tail);
-    } else {
-      out = new_cons(head, tail);
-    }
-
-    break;
-   }
-  }
-
- return out;
-}
-
-
-
-lobj_t * apply(lobj_t * fun, lobj_t ** env, lobj_t * args) {
-  switch (fun->type) {
-  case LOBJ_FORM: return apply_form(toform(fun), env, args);
-  case LOBJ_PRIM: return apply_prim(toprim(fun), env, args);
-  case LOBJ_PROC: return apply_lambda(toproc(fun), args);
-  default: return new_err("Type Error: expected type function, got %i", fun->type);
-    }
-}
-
-
-lobj_t * apply_lambda(lambda_t * fun, lobj_t * args) {
+lobj_t * bind_args(lambda_t * fun, lobj_t * args) {
   lobj_t * formals = fun->formals;
   lobj_t * bound_env = *(fun->env);
 
@@ -96,37 +11,97 @@ lobj_t * apply_lambda(lambda_t * fun, lobj_t * args) {
     formals = cdr(formals);
   }
 
-  return lobj_eval(fun->body, &bound_env);
+  LASSERT(isnil(formals), "arity error")
+  return bound_env;
 }
 
 
-lobj_t * apply_prim(prim_t * fun, lobj_t ** env, lobj_t * args) {
-  lobj_t * argstuple[fun->argc];
-  int i = 0;
 
-  while (!isnil(args)) {
-    LASSERT(i < fun->argc, "Too many args, exceeded %i", fun->argc)
-      argstuple[i] = car(args);
-    args = cdr(args);
-    i++;
+lobj_t * lobj_eval(lobj_t * v, lobj_t ** env) {
+  lobj_t * out = v;
+
+ switch (out->type) {
+  case LOBJ_NUM:
+  case LOBJ_ERR:
+  case LOBJ_PROC:
+  case LOBJ_PRIM:
+  case LOBJ_STR:
+    break;
+  case LOBJ_SYM:{
+    out = lookup(out, env);
+    break;
   }
+  case LOBJ_CONS:{
+    // Call recursively on car and cdr.
+     lobj_t * head = lobj_eval(car(out), env);
+     lobj_t * tail = cdr(out);
 
-  LASSERT(i == fun->argc, "Expected %i args, got %i", fun->argc, i)
-  return (fun->body(argstuple, env));
+     out = (isproc(head) || isprim(head)) ?
+           apply(head, env, tail) :
+           new_cons(head, lobj_eval(tail, env));
+     break;
+  }
+ }  
+
+ return out;
 }
 
 
-lobj_t * apply_form(form_t * form, lobj_t ** env, lobj_t * args) {
-  lobj_t * argstuple[form->argc];
-  int i = 0;
+lobj_t * lobj_expand(lobj_t * v, lobj_t ** env) {
+  lobj_t * out = v, * binding;
 
-  while (!isnil(args)) {
-    LASSERT(i < form->argc, "Too many args, exceeded %i", form->argc)
-      argstuple[i] = car(args);
-    args = cdr(args);
-    i++;
+ switch (out->type) {
+  case LOBJ_NUM:
+  case LOBJ_ERR:
+  case LOBJ_PROC:
+  case LOBJ_PRIM:
+  case LOBJ_STR:
+    break;
+  // Symbols should only be substituted if they represent macros
+  case LOBJ_SYM:{
+    binding = lookup(out, env);
+    out = ismacro(binding) ? binding : out;
+    break;
   }
+  case LOBJ_CONS:{
+    // Call recursively on car and cdr.
+     lobj_t * head = lobj_expand(car(out), env);
+     lobj_t * tail = lobj_expand(cdr(out), env);
 
-  LASSERT(i == form->argc, "Expected %i args, got %i", form->argc, i)
-  return (form->body(argstuple, env));
+     out = ismacro(head) ?
+           apply(head, env, tail) :
+           new_cons(head, tail);
+     break;
+  }
+ }  
+ return out;
+}
+
+
+lobj_t * apply(lobj_t * fun, lobj_t ** env, lobj_t * args) {
+  switch (fun->type) {
+  case LOBJ_PRIM:{
+    prim_t * body = toprim(fun);
+    args = (body->evaltype) == EVAL_PROC ? lobj_eval(args, env) : args;
+    return apply_prim(fun, env, args);
+  }case LOBJ_PROC:{
+     lambda_t * lmbody = toproc(fun);
+     args = (lmbody->evaltype) == EVAL_PROC ? lobj_eval(args, env) : args;
+     return apply_lambda(fun, args);
+  }default: return new_err("Type Error: expected type function, got %i", fun->type);
+    }
+}
+
+lobj_t * apply_prim(lobj_t * fun, lobj_t ** env, lobj_t * args) {
+  prim_t * pfun = toprim(fun);
+  lobj_t ** argstup = getargs(fun, args);
+
+  return (pfun->body(argstup, env));
+}
+
+lobj_t * apply_lambda(lobj_t * fun, lobj_t * args) {
+  lambda_t * lfun = toproc(fun);
+  lobj_t * bound_env = bind_args(lfun, args);
+
+  return lobj_eval(lfun->body, &bound_env);
 }

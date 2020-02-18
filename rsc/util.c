@@ -1,34 +1,65 @@
-#ifndef util_h
-#define util_h
-#include "rascal.h"
-#include "object.h"
+#include "util.h"
 
 
 /*
 Utilities for working on the backend.
  */
 
+tuple_t * new_tuple(int len) {
+  tuple_t * out = malloc(sizeof(tuple_t));
+  out->values = malloc(sizeof(lobj_t*) * len);
+  out->len = len;
+
+  return out;
+}
+
+void del_tuple(tuple_t * garbage) {
+  free(garbage->values);
+  free(garbage);
+
+  return;
+}
+
 // Get the length of a lisp list as a c size_t
-size_t list_len(lobj_t * xs) {
-  size_t out = 0;
+int list_len(lobj_t * xs) {
+  int out = 0;
   for (; !isnil(xs); xs = cdr(xs)) { out++; }
   return out;
 }
 
 
-lobj_t ** list_to_vector(lobj_t * xs) {
-  size_t idx = list_len(xs);
-  lobj_t ** out = malloc(sizeof(lobj_t*) * (idx+1));
+tuple_t * list_to_vector(lobj_t * xs) {
+  int idx = list_len(xs);
+  tuple_t * out = new_tuple(idx);
 
-  for (size_t i = 0; i < idx; i++) {
-    out[i] = car(xs);
+  for (int i = 0; i < idx; i++) {
+    out->values[i] = car(xs);
     xs = cdr(xs);
   }
-
-  out[idx] = NIL;
 
   return out;
 }
 
-#endif
+// Get a vector of arguments and check arity
+lobj_t ** getargs(lobj_t * fun, lobj_t * args) {
+  lobj_t ** out;
+  tuple_t * argstup = list_to_vector(args);
+  int len = argstup->len;
+  int argc = isprim(fun) ? toprim(fun)->argc : toproc(fun)->argc;
+  int vararg = isprim(fun) ? toprim(fun)->vararg : toproc(fun)->vararg;
 
+  if (vararg) {
+    if (((argstup->len) % (argc - 1)) != 1) {
+      del_tuple(argstup);
+      LRAISE("arity error: expected %d args to #, got %d", argc, len);
+    }
+  } else if (argc != len) {
+    del_tuple(argstup);
+    LRAISE("arity error: expected %d args to #, got %d", argc, len);
+  }
+
+  out = argstup->values;
+  free(argstup);
+
+  return out;
+  }

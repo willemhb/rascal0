@@ -9,7 +9,6 @@ void lobj_print(lobj_t * v) {
   case LOBJ_CONS:  lobj_expr_print(v, '(', ')'); break;
   case LOBJ_PRIM:
   case LOBJ_PROC:  printf("#proc"); break;
-  case LOBJ_FORM:  printf("#form"); break;
   default: printf("#");
   }
 }

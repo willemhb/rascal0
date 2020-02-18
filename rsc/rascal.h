@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdint.h>
+#include <stddef.h>
 
 // Forward type declarations
 typedef struct _lobj_t lobj_t;

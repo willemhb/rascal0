@@ -1,6 +1,7 @@
 #include "object.h"
 #include "eval.h"
 #include "printer.h"
+#include "util.h"
 
 cons_t * mk_cons(lobj_t * car_, lobj_t * cdr_) {
   cons_t * v = malloc(sizeof(cons_t));
@@ -99,18 +100,20 @@ lobj_t * new_err(char * fmt, ...) {
   return out;
 }
 
-prim_t * mk_prim(proc_t body, int argc) {
+prim_t * mk_prim(proc_t body, int argc, int vararg, int evaltype) {
   prim_t * fun = malloc(sizeof(prim_t));
   fun->type = LOBJ_PRIM;
   fun->tag = GC_WHITE;
   fun->argc = argc;
+  fun->vararg = vararg;
+  fun->evaltype = evaltype;
   fun->body = body;
 
   return fun;
 }
 
-lobj_t * new_prim(proc_t body, int argc) {
-  lobj_t * fun = LOBJ_CAST(mk_prim(body, argc));
+lobj_t * new_prim(proc_t body, int argc, int vararg, int evaltype) {
+  lobj_t * fun = LOBJ_CAST(mk_prim(body, argc, vararg, evaltype));
   LINK(fun);
 
   return fun;
@@ -118,29 +121,13 @@ lobj_t * new_prim(proc_t body, int argc) {
 
 
 
-form_t * mk_form(proc_t body, int argc) {
-  form_t * fun = malloc(sizeof(form_t));
-  fun->type = LOBJ_FORM;
-  fun->tag = GC_WHITE;
-  fun->argc = argc;
-  fun->body = body;
-
-  return fun;
-}
-
-lobj_t * new_form(proc_t body, int argc) {
-  lobj_t * form = LOBJ_CAST(mk_form(body, argc));
-  LINK(form);
-
-  return form;
-}
-
-
-
-lambda_t * mk_proc(lobj_t * formals, lobj_t * body, lobj_t ** parent) {
+lambda_t * mk_proc(lobj_t * formals, lobj_t * body, lobj_t ** parent, int vararg, int evaltype) {
   lambda_t * fun = malloc(sizeof(lambda_t));
   fun->type = LOBJ_PROC;
   fun->tag = GC_WHITE;
+  fun->argc = list_len(formals);
+  fun->vararg = vararg;
+  fun->evaltype = evaltype;
   fun->formals = formals;
   fun->body = body;
   fun->env = parent;
@@ -148,8 +135,8 @@ lambda_t * mk_proc(lobj_t * formals, lobj_t * body, lobj_t ** parent) {
   return fun;
 }
 
-lobj_t * new_proc(lobj_t * formals, lobj_t * body, lobj_t ** parent) {
-  lobj_t * out = LOBJ_CAST(mk_proc(formals, body, parent));
+lobj_t * new_proc(lobj_t * formals, lobj_t * body, lobj_t ** parent, int vararg, int evaltype) {
+  lobj_t * out = LOBJ_CAST(mk_proc(formals, body, parent, vararg, evaltype));
   LINK(out);
 
   return out;
@@ -170,7 +157,6 @@ SAFECAST_OP(err_t*, err, "err")
 SAFECAST_OP(sym_t*, sym, "sym")
 SAFECAST_OP(lambda_t*, proc, "proc")
 SAFECAST_OP(prim_t*, prim, "prim")
-SAFECAST_OP(form_t*, form, "form")
 SAFECAST_OP(str_t*, string, "string")
 
 // Deep copy operation
@@ -186,11 +172,10 @@ SAFECAST_OP(str_t*, string, "string")
     case LOBJ_STR: return new_str(tostring(obj)->value);
     case LOBJ_PROC:{
        lambda_t * proc = toproc(obj);
-       lambda_t * out_proc = mk_proc(lobj_copy(proc->formals), lobj_copy(proc->body), proc->env);
+       lambda_t * out_proc = mk_proc(lobj_copy(proc->formals), lobj_copy(proc->body), proc->env, proc->vararg, proc->evaltype);
        out = LOBJ_CAST(out_proc);
        break;
-     }case LOBJ_FORM:
-      case LOBJ_PRIM: return obj;
+     }case LOBJ_PRIM: return obj;
       case LOBJ_CONS: return new_cons(lobj_copy(car(obj)), lobj_copy(cdr(obj)));
     } 
 
@@ -412,7 +397,7 @@ lobj_t * form_setq(lobj_t * args[2], lobj_t ** env) {
 lobj_t * form_quote(lobj_t * args[1], lobj_t ** env) {
   lobj_t * out = args[0];
 
-  return lobj_qeval(out, env);
+  return lobj_expand(out, env);
 }
 
 
@@ -427,7 +412,7 @@ lobj_t * form_if(lobj_t * args[3], lobj_t ** env) {
 
 
 lobj_t * form_fn(lobj_t * args[2], lobj_t ** env) {
-  return new_proc(args[0], args[1], env);
+  return new_proc(args[0], args[1], env, 0, EVAL_PROC);
 }
 
 
@@ -439,4 +424,8 @@ lobj_t * form_do(lobj_t * args[1], lobj_t ** env) {
   }
 
   return out;
+}
+
+lobj_t * form_unquote(lobj_t * args[1], lobj_t ** env) {
+  return lobj_eval(args[0], env);
 }
